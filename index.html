@@ -153,6 +153,11 @@ h1,h2,h3{margin:0; font-weight:650; text-wrap:balance; letter-spacing:-.01em}
 .dblbanner .why{font-weight:500; opacity:.85; font-size:11.5px}
 .dblbanner button{margin-left:auto; font-size:11.5px; font-weight:650; text-decoration:underline; color:inherit; white-space:nowrap}
 .dblbanner.off{background:var(--surface-2); border-color:var(--line); color:var(--ink-3)}
+.bonusnote{
+  padding:8px 12px; border-radius:11px; background:var(--accent-soft); border:1px solid var(--accent);
+  color:var(--accent); font-size:12px; font-weight:600; line-height:1.45;
+}
+.bonusnote b{font-weight:700; font-variant-numeric:tabular-nums}
 
 /* ── player rows ─────────────────────────── */
 .prow{padding:12px 14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:9px}
@@ -171,6 +176,7 @@ h1,h2,h3{margin:0; font-weight:650; text-wrap:balance; letter-spacing:-.01em}
   background:var(--surface-2); border:1px solid var(--accent); border-radius:8px;
 }
 .ptag{font-size:10.5px; padding:1px 6px; border-radius:5px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-3); font-weight:600; white-space:nowrap}
+.ptag.under{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
 .pdelta{margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:1px; white-space:nowrap}
 .pdelta b{font-size:14px; font-weight:680; letter-spacing:-.01em}
 .pdelta i{font-size:10.5px; font-style:normal; color:var(--ink-3); font-weight:500}
@@ -341,10 +347,14 @@ function freshState(){
       trigOB:    true,    // OB 발생
       trigHZ:    false,   // 해저드 진입
       trigTie3:  true,    // 4인 이상일 때 3명 동타
+      trigUnder: true,    // 버디 이상 (파보다 적은 타수)
       when: "same",       // same | next
       stack: false,       // 연속 배판 누적
       dblPen: false,      // 페널티에도 배판 적용
-      penMode: "each"     // each(각자에게) | split(1인분 나눔)
+      penMode: "each",    // each(각자에게) | split(1인분 나눔)
+      birdieOn: true,     // 버디값 사용
+      birdie: { mode:"link", mult:1, fixed:5000 },   // 버디값
+      eagle:  { mode:"link", mult:2, fixed:10000 }   // 이글 이상
     },
     holes: Array.from({length:18}, (_,i)=>newHole(i)),
     cur: 0
@@ -360,7 +370,9 @@ function load(){
     const o = JSON.parse(raw);
     if(!o || !Array.isArray(o.players)) return null;
     const base = freshState();
-    o.cfg = Object.assign(base.cfg, o.cfg||{});
+    const bird = Object.assign(base.cfg.birdie, (o.cfg||{}).birdie||{});
+    const eag  = Object.assign(base.cfg.eagle,  (o.cfg||{}).eagle ||{});
+    o.cfg = Object.assign(base.cfg, o.cfg||{}, { birdie: bird, eagle: eag });
     o.pen = Object.assign(base.pen, o.pen||{});
     return o;
   }catch(e){ return null; }
@@ -393,6 +405,7 @@ function triggersAt(i){
       const over = sc - h.par;
       if(h.par === 3 ? over >= 2 : over >= 3) out.push(p.name + " " + (h.par===3?"더블+":"트리플+"));
     }
+    if(c.trigUnder && sc != null && sc < h.par) out.push(p.name + " " + underName(sc, h.par));
     if(c.trigPutt && (h.putt[p.id]||0) >= 3) out.push(p.name + " 3퍼트");
     if(c.trigOB && (h.ob[p.id]||0) > 0) out.push(p.name + " OB");
     if(c.trigHZ && (h.hz[p.id]||0) > 0) out.push(p.name + " 해저드");
@@ -429,6 +442,11 @@ function doubleAt(i){
   return { on, auto, reasons, mult, srcHole: src };
 }
 
+/* 버디값·이글값 — 홀 금액에 연동하거나 고정 금액 */
+function bonusValue(c, holeAmt){
+  return c.mode === "link" ? Math.round(holeAmt * (c.mult||0)) : (c.fixed||0);
+}
+
 /* 한 홀의 모든 이체를 계산 — 합계는 항상 0원 */
 function settleHole(i){
   const h = S.holes[i];
@@ -450,7 +468,23 @@ function settleHole(i){
     }
   }
 
-  // 2) 페널티 정산 — 발생자가 나머지 전원에게
+  // 2) 버디값 — 언더파를 친 사람이 못 친 사람 각자에게서 받음
+  if(S.cfg.birdieOn){
+    const scored = pl.filter(p => h.s[p.id] != null);
+    const payers = scored.filter(p => h.s[p.id] >= h.par);
+    if(payers.length){
+      for(const p of scored){
+        const sc = h.s[p.id];
+        if(sc >= h.par) continue;
+        const eagleUp = (h.par - sc) >= 2;
+        const v = bonusValue(eagleUp ? S.cfg.eagle : S.cfg.birdie, amt);
+        if(v <= 0) continue;
+        for(const q of payers) pays.push({ from:q.id, to:p.id, value:v, kind:"birdie" });
+      }
+    }
+  }
+
+  // 3) 페널티 정산 — 발생자가 나머지 전원에게
   const pAmt = S.cfg.dblPen ? d.mult : 1;
   for(const p of pl){
     const total = ((h.ob[p.id]||0) * S.pen.ob
@@ -496,6 +530,13 @@ function minimalTransfers(net){
     if(pos[j].v === 0) j++;
   }
   return out;
+}
+
+/* 파 대비 언더파 이름 */
+function underName(score, par){
+  if(score === 1) return "홀인원";
+  const u = par - score;
+  return u === 1 ? "버디" : u === 2 ? "이글" : u === 3 ? "알바트로스" : u >= 4 ? "콘도르" : "";
 }
 
 const nameOf = id => (P().find(p=>p.id===id)||{name:"?"}).name;
@@ -568,12 +609,13 @@ function renderScore(){
 
   const rows = P().map(p => {
     const sc = h.s[p.id];
-    const rel = sc==null ? "" : (sc-h.par===0 ? "파" : (sc-h.par>0 ? "+"+(sc-h.par) : String(sc-h.par)));
+    const rel = sc==null ? "" : (sc-h.par===0 ? "파" : (sc-h.par>0 ? "+"+(sc-h.par) : (underName(sc,h.par)||String(sc-h.par))));
+    const under = sc!=null && sc < h.par;
     const v = Math.round(hnet[p.id]);
     return `<div class="prow">
       <div class="prow-top">
         <button class="pname" data-rename="${p.id}" title="탭해서 이름 변경">${esc(p.name)}<span class="penc">✎</span></button>
-        ${rel?`<span class="ptag">${rel}</span>`:""}
+        ${rel?`<span class="ptag ${under?"under":""}">${rel}</span>`:""}
         <span class="pdelta">
           <b class="num ${v>0?"pos":v<0?"neg":"zero"}">${v===0?"—":wonS(v)}</b>
           <i class="num">누적 ${wonS(Math.round(run[p.id]))}</i>
@@ -631,6 +673,7 @@ function renderScore(){
           <button class="linkbtn" data-amt="rest">이후 전체</button>
         </div>
         ${banner}
+        ${bonusNote(i, r.amount)}
       </div>
       ${rows}
     </div>
@@ -647,6 +690,22 @@ function renderScore(){
     });
   });
 }
+/* 이 홀에 버디값이 걸렸다면 누가 얼마를 받는지 */
+function bonusNote(i, amt){
+  if(!S.cfg.birdieOn) return "";
+  const h = S.holes[i];
+  const scored = P().filter(p => h.s[p.id] != null);
+  const payers = scored.filter(p => h.s[p.id] >= h.par).length;
+  const winners = scored.filter(p => h.s[p.id] < h.par);
+  if(!winners.length || !payers) return "";
+  const parts = winners.map(p=>{
+    const eagleUp = (h.par - h.s[p.id]) >= 2;
+    const v = bonusValue(eagleUp ? S.cfg.eagle : S.cfg.birdie, amt);
+    return `${esc(p.name)} ${underName(h.s[p.id], h.par)}값 <b>${won(v)}</b> ×${payers}명`;
+  });
+  return `<div class="bonusnote">${parts.join(" · ")}</div>`;
+}
+
 /* 이름을 그 자리에서 고쳐 쓰기 */
 function startRename(btn, id){
   const p = P().find(x=>x.id===id); if(!p) return;
@@ -823,6 +882,18 @@ function renderSetup(){
         <div class="matnote">‘각자에게’는 발생자가 나머지 <b>한 명당</b> 그 금액을 냅니다(4인이면 3배 지출). ‘나눠서’는 그 금액을 나머지가 나눠 갖습니다.</div>
       </div></div>
 
+    <div class="sect"><div class="sect-head"><h2>버디값</h2></div>
+      <div class="card">
+        ${sw("birdieOn","버디값 사용","언더파를 친 사람이 못 친 사람 각자에게서 받습니다",c.birdieOn)}
+        ${bonusRow("birdie","버디",c.birdie)}
+        ${bonusRow("eagle","이글 이상",c.eagle)}
+        <div class="matnote">
+          ‘홀 금액 연동’은 그 홀에 실제 적용된 타당금액 기준입니다. ₩1,000판에서 버디가 나오면 그 홀은 배판이라
+          타당 ₩2,000이 되고, 버디값도 <b>₩${(S.base*2*(c.birdie.mult||0)).toLocaleString("ko-KR")}</b>씩 받습니다.
+          같은 홀에서 두 명이 버디면 서로에게는 주고받지 않고, 버디를 못 친 사람에게서만 받습니다.
+        </div>
+      </div></div>
+
     <div class="sect"><div class="sect-head"><h2>배판 규칙</h2></div>
       <div class="card">
         <div class="row"><span class="k">배수</span>
@@ -837,6 +908,7 @@ function renderSetup(){
         ${sw("trigOB","OB 발생","한 명이라도 OB가 나면",c.trigOB)}
         ${sw("trigHZ","해저드 진입","한 명이라도 해저드에 빠지면",c.trigHZ)}
         ${sw("trigTie3","3명 동타","4명 이상이 친 홀에서 세 명 이상 타수가 같으면",c.trigTie3)}
+        ${sw("trigUnder","버디 이상","한 명이라도 파보다 적은 타수를 치면",c.trigUnder)}
         ${sw("stack","연속 누적","조건이 연달아 걸리면 ×2 → ×4 → ×8",c.stack)}
         ${sw("dblPen","페널티에도 배판","기본은 타수 금액에만 적용",c.dblPen)}
       </div></div>
@@ -849,6 +921,22 @@ function renderSetup(){
       <button class="btn danger" id="resetBtn">스코어 전체 지우기</button>
     </div>`;
 }
+function bonusRow(key,label,c){
+  const link = c.mode === "link";
+  const sub = link
+    ? `홀 적용금액 × ${c.mult} = 지금 기준 ${won(S.base * 2 * c.mult)}`
+    : `배판과 상관없이 ${won(c.fixed)} 고정`;
+  return `<div class="row"><span class="k">${label}<small>${sub}</small></span>
+    <div class="seg" style="margin-right:6px">
+      <button data-bmode="${key}|link" aria-pressed="${link}">홀 금액 연동</button>
+      <button data-bmode="${key}|fixed" aria-pressed="${!link}">고정</button>
+    </div>
+    ${link
+      ? `<input type="number" data-bmult="${key}" value="${c.mult}" step="0.5" min="0" style="width:74px">`
+      : `<input type="number" data-bfixed="${key}" value="${c.fixed}" step="1000" min="0" style="width:96px">`}
+  </div>`;
+}
+
 function sw(key,label,sub,on){
   return `<div class="row"><span class="k">${label}<small>${sub}</small></span>
     <button class="sw" data-cfg="${key}" aria-pressed="${!!on}" aria-label="${label}"></button></div>`;
@@ -992,6 +1080,10 @@ document.addEventListener("click", e=>{
   }
   if(t.dataset.hc){ S.holeCount = +t.dataset.hc; S.cur = Math.min(S.cur, S.holeCount-1); render(); return; }
   if(t.dataset.pm){ S.cfg.penMode = t.dataset.pm; render(); return; }
+  if(t.dataset.bmode){
+    const [k,m] = t.dataset.bmode.split("|");
+    S.cfg[k].mode = m; render(); return;
+  }
   if(t.dataset.mult){ S.cfg.mult = +t.dataset.mult; render(); return; }
   if(t.dataset.when){ S.cfg.when = t.dataset.when; render(); return; }
   if(t.dataset.cfg){ S.cfg[t.dataset.cfg] = !S.cfg[t.dataset.cfg]; render(); return; }
@@ -1023,6 +1115,8 @@ document.addEventListener("input", e=>{
   if(el.id === "date"){ S.date = el.value; save(); return; }
   if(el.id === "base"){ S.base = Math.max(0, +el.value||0); save(); return; }
   if(el.dataset.pen){ S.pen[el.dataset.pen] = Math.max(0, +el.value||0); save(); return; }
+  if(el.dataset.bmult){ S.cfg[el.dataset.bmult].mult = Math.max(0, +el.value||0); save(); return; }
+  if(el.dataset.bfixed){ S.cfg[el.dataset.bfixed].fixed = Math.max(0, +el.value||0); save(); return; }
 });
 
 document.addEventListener("keydown", e=>{
