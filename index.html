@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="골프 내기 정산 계산기 — 홀별 타수, 페널티, 배판을 반영해 누가 누구에게 얼마를 줘야 하는지 계산합니다.">
+<meta name="theme-color" content="#EDF0EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1310" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="골프 정산">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9B%B3</text></svg>">
+<style>*{margin:0}html,body{min-height:100%}</style>
+<title>홀당 정산 · 골프 내기 계산기</title>
+<style>
+:root{
+  --bg:#EDF0EA; --surface:#FFFFFF; --surface-2:#F6F8F3; --line:#DAE1D6; --line-strong:#C3CDBE;
+  --ink:#151C18; --ink-2:#57665D; --ink-3:#8A988E;
+  --accent:#1F6F4A; --accent-ink:#FFFFFF; --accent-soft:#DDEBE2;
+  --gold:#96690F; --gold-soft:#F4E7C6; --gold-line:#DCC183;
+  --pos:#1B6E46; --neg:#AF4128;
+  --shadow:0 1px 2px rgba(20,35,26,.06), 0 8px 24px -16px rgba(20,35,26,.35);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0E1310; --surface:#161D19; --surface-2:#1C2520; --line:#28332E; --line-strong:#3A4842;
+    --ink:#E7EDE7; --ink-2:#9BACA1; --ink-3:#6C7E74;
+    --accent:#57B383; --accent-ink:#0C1712; --accent-soft:#1D3629;
+    --gold:#D8A93F; --gold-soft:#332913; --gold-line:#5A4718;
+    --pos:#5FBE8C; --neg:#E07A5E;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#EDF0EA; --surface:#FFFFFF; --surface-2:#F6F8F3; --line:#DAE1D6; --line-strong:#C3CDBE;
+  --ink:#151C18; --ink-2:#57665D; --ink-3:#8A988E;
+  --accent:#1F6F4A; --accent-ink:#FFFFFF; --accent-soft:#DDEBE2;
+  --gold:#96690F; --gold-soft:#F4E7C6; --gold-line:#DCC183;
+  --pos:#1B6E46; --neg:#AF4128;
+  --shadow:0 1px 2px rgba(20,35,26,.06), 0 8px 24px -16px rgba(20,35,26,.35);
+}
+:root[data-theme="dark"]{
+  --bg:#0E1310; --surface:#161D19; --surface-2:#1C2520; --line:#28332E; --line-strong:#3A4842;
+  --ink:#E7EDE7; --ink-2:#9BACA1; --ink-3:#6C7E74;
+  --accent:#57B383; --accent-ink:#0C1712; --accent-soft:#1D3629;
+  --gold:#D8A93F; --gold-soft:#332913; --gold-line:#5A4718;
+  --pos:#5FBE8C; --neg:#E07A5E;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",ui-sans-serif,system-ui,sans-serif;
+  font-size:15px; line-height:1.5; -webkit-text-size-adjust:100%;
+}
+.num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums}
+button{font:inherit; color:inherit; background:none; border:none; cursor:pointer; -webkit-tap-highlight-color:transparent}
+button:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+input,select{font:inherit; color:inherit}
+h1,h2,h3{margin:0; font-weight:650; text-wrap:balance; letter-spacing:-.01em}
+
+.wrap{max-width:720px; margin:0 auto; padding:0 14px 120px}
+
+/* ── top bar ─────────────────────────────── */
+.topbar{
+  position:sticky; top:0; z-index:30; background:var(--bg);
+  border-bottom:1px solid var(--line);
+}
+.topbar-in{max-width:720px; margin:0 auto; padding:10px 14px; display:flex; align-items:center; gap:10px}
+.brand{display:flex; flex-direction:column; gap:1px; margin-right:auto; min-width:0}
+.brand b{font-size:15px; font-weight:680; letter-spacing:-.02em}
+.brand span{font-size:11.5px; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.iconbtn{
+  width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
+  background:var(--surface); display:grid; place-items:center; font-size:14px; color:var(--ink-2);
+}
+.iconbtn:active{background:var(--surface-2)}
+
+/* ── tabs ────────────────────────────────── */
+.tabs{display:flex; gap:4px; background:var(--surface-2); border:1px solid var(--line); border-radius:11px; padding:3px; margin:12px 0 14px}
+.tabs button{flex:1; padding:8px 4px; border-radius:8px; font-size:13.5px; font-weight:600; color:var(--ink-2)}
+.tabs button[aria-selected="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow)}
+
+/* ── cards ───────────────────────────────── */
+.card{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow)}
+.sect{display:flex; flex-direction:column; gap:10px; margin-bottom:16px}
+.sect-head{display:flex; align-items:baseline; gap:8px; padding:0 2px}
+.sect-head h2{font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
+.sect-head .hint{font-size:12px; color:var(--ink-3); margin-left:auto}
+
+/* ── 현재 판세 ───────────────────────────── */
+.stand{display:flex; gap:6px; overflow-x:auto; padding:2px 2px 4px; scrollbar-width:none; margin-bottom:10px}
+.stand::-webkit-scrollbar{display:none}
+.stand .sc{
+  flex:1 1 0; min-width:82px; padding:8px 10px; border-radius:11px; border:1px solid var(--line);
+  background:var(--surface); box-shadow:var(--shadow); display:flex; flex-direction:column; gap:2px;
+}
+.stand .sc .n{font-size:11.5px; font-weight:650; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.stand .sc .v{font-size:15px; font-weight:700; letter-spacing:-.02em; white-space:nowrap}
+.stand .sc.lead{border-color:var(--accent)}
+.stand .sc.lead .n{color:var(--accent)}
+.standhead{display:flex; align-items:baseline; gap:8px; padding:0 2px 6px}
+.standhead h2{font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
+.standhead span{font-size:11.5px; color:var(--ink-3); margin-left:auto}
+
+/* ── hole strip ──────────────────────────── */
+.halfrow{display:flex; align-items:flex-start; gap:8px; margin-bottom:2px}
+.halflab{
+  flex:0 0 auto; width:30px; padding-top:13px; font-size:11px; font-weight:700; color:var(--ink-3);
+  letter-spacing:.02em; line-height:1.2; text-align:center;
+}
+.holestrip{display:flex; gap:5px; overflow-x:auto; padding:2px 2px 6px; scrollbar-width:none; flex:1; min-width:0}
+.holestrip::-webkit-scrollbar{display:none}
+.hchip{
+  flex:0 0 auto; min-width:38px; height:44px; border-radius:10px; border:1px solid var(--line);
+  background:var(--surface); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+}
+.hchip b{font-size:14px; font-weight:650}
+.hchip i{font-size:9.5px; font-style:normal; color:var(--ink-3); letter-spacing:.02em}
+.hchip.done{background:var(--surface-2)}
+.hchip.dbl{border-color:var(--gold-line); background:var(--gold-soft)}
+.hchip.dbl i{color:var(--gold)}
+.hchip[aria-current="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 1.5px var(--accent)}
+
+/* ── hole header ─────────────────────────── */
+.holehead{padding:14px; display:flex; flex-direction:column; gap:12px}
+.holehead-top{display:flex; align-items:center; gap:10px}
+.holenum{display:flex; align-items:baseline; gap:6px; margin-right:auto}
+.holenum b{font-size:26px; font-weight:700; letter-spacing:-.03em; line-height:1}
+.holenum span{font-size:12px; color:var(--ink-3)}
+.navbtn{width:36px; height:36px; border-radius:10px; border:1px solid var(--line); background:var(--surface-2); display:grid; place-items:center; font-size:16px}
+.navbtn:disabled{opacity:.35}
+
+.parpick{display:flex; gap:4px}
+.parpick button{
+  padding:5px 11px; border-radius:8px; border:1px solid var(--line); font-size:12.5px; font-weight:600; color:var(--ink-2);
+}
+.parpick button[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+
+.moneyrow{display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:11px; background:var(--surface-2); border:1px solid var(--line)}
+.moneyrow .lab{font-size:11.5px; color:var(--ink-3); font-weight:600; letter-spacing:.04em}
+.moneyrow .val{font-size:17px; font-weight:680; letter-spacing:-.02em}
+.moneyrow .val small{font-size:11px; color:var(--ink-3); font-weight:500; margin-left:3px}
+.stepper{display:flex; align-items:center; gap:2px; margin-left:auto}
+.stepper button{width:30px; height:30px; border-radius:8px; border:1px solid var(--line); background:var(--surface); font-size:15px; font-weight:600; display:grid; place-items:center}
+.stepper button:active{background:var(--accent-soft)}
+.linkbtn{font-size:11.5px; color:var(--accent); font-weight:650; padding:4px 6px; border-radius:6px}
+
+.dblbanner{
+  display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:11px;
+  background:var(--gold-soft); border:1px solid var(--gold-line); color:var(--gold); font-size:12.5px; font-weight:600;
+}
+.dblbanner .why{font-weight:500; opacity:.85; font-size:11.5px}
+.dblbanner button{margin-left:auto; font-size:11.5px; font-weight:650; text-decoration:underline; color:inherit; white-space:nowrap}
+.dblbanner.off{background:var(--surface-2); border-color:var(--line); color:var(--ink-3)}
+
+/* ── player rows ─────────────────────────── */
+.prow{padding:12px 14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:9px}
+.prow:first-child{border-top:none}
+.prow-top{display:flex; align-items:center; gap:10px}
+.pname{
+  font-weight:650; font-size:15px; letter-spacing:-.01em; min-width:0; white-space:nowrap;
+  display:flex; align-items:center; gap:5px; padding:3px 7px; margin-left:-7px; border-radius:8px;
+  border:1px dashed transparent; text-align:left;
+}
+.pname .penc{font-size:10px; color:var(--ink-3); opacity:.55}
+.pname:hover,.pname:active{border-color:var(--line-strong); background:var(--surface-2)}
+.pname:hover .penc{opacity:1; color:var(--accent)}
+.nameinput{
+  font-weight:650; font-size:15px; width:120px; padding:3px 7px; margin-left:-8px;
+  background:var(--surface-2); border:1px solid var(--accent); border-radius:8px;
+}
+.ptag{font-size:10.5px; padding:1px 6px; border-radius:5px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-3); font-weight:600; white-space:nowrap}
+.pdelta{margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:1px; white-space:nowrap}
+.pdelta b{font-size:14px; font-weight:680; letter-spacing:-.01em}
+.pdelta i{font-size:10.5px; font-style:normal; color:var(--ink-3); font-weight:500}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .zero{color:var(--ink-3)}
+
+.scorebox{display:flex; align-items:center; gap:3px}
+.scorebox button{width:34px; height:34px; border-radius:9px; border:1px solid var(--line); background:var(--surface-2); font-size:16px; display:grid; place-items:center}
+.scorebox .sv{min-width:46px; text-align:center; font-size:19px; font-weight:700; letter-spacing:-.02em}
+.scorebox .sv.empty{color:var(--ink-3); font-weight:500; font-size:15px}
+
+.pills{display:flex; gap:5px; flex-wrap:wrap}
+.pill{
+  display:flex; align-items:stretch; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--surface-2);
+}
+.pill .lbl{padding:5px 8px; font-size:11.5px; font-weight:600; color:var(--ink-3); display:flex; align-items:center; gap:5px}
+.pill .lbl b{font-size:12.5px; color:var(--ink-3); font-weight:700}
+.pill.on{border-color:var(--accent); background:var(--accent-soft)}
+.pill.on .lbl,.pill.on .lbl b{color:var(--accent)}
+.pill .minus{padding:0 8px; border-left:1px solid var(--line); font-size:13px; color:var(--ink-3); display:grid; place-items:center}
+.pill.on .minus{border-color:var(--accent)}
+
+/* ── results ─────────────────────────────── */
+.netgrid{display:flex; flex-direction:column}
+.netrow{display:flex; align-items:center; gap:10px; padding:12px 14px; border-top:1px solid var(--line)}
+.netrow:first-child{border-top:none}
+.netrow .rank{width:20px; font-size:11px; color:var(--ink-3); font-weight:700}
+.netrow .nm{font-weight:650; margin-right:auto}
+.netrow .halves{display:block; font-size:11px; font-weight:500; color:var(--ink-3); margin-top:2px}
+.netrow .sc{font-size:12px; color:var(--ink-3)}
+.netrow .amt{font-size:16px; font-weight:700; letter-spacing:-.02em; min-width:92px; text-align:right}
+
+.pay{display:flex; align-items:center; gap:9px; padding:11px 14px; border-top:1px solid var(--line); font-size:14px}
+.pay:first-child{border-top:none}
+.pay .from{font-weight:650}
+.pay .arrow{color:var(--ink-3); font-size:13px}
+.pay .to{font-weight:650}
+.pay .amt{margin-left:auto; font-weight:700; letter-spacing:-.02em}
+
+.tablewrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; font-size:13px}
+th,td{padding:8px 10px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left; position:sticky; left:0; background:var(--surface); font-weight:650}
+thead th{font-size:11px; letter-spacing:.05em; color:var(--ink-3); text-transform:uppercase; font-weight:700}
+tbody tr:last-child td{border-bottom:none}
+td.z{color:var(--ink-3)}
+.matnote{padding:9px 14px 12px; font-size:11.5px; color:var(--ink-3); line-height:1.45}
+
+.holelog{padding:10px 14px; border-top:1px solid var(--line)}
+.holelog:first-child{border-top:none}
+.holelog summary{display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; font-size:13.5px}
+.holelog summary::-webkit-details-marker{display:none}
+.holelog summary .hn{font-weight:680; min-width:62px}
+.holelog summary .meta{color:var(--ink-3); font-size:12px; margin-right:auto}
+.holelog summary .tot{font-size:12.5px; color:var(--ink-2); font-weight:600}
+.holelog .body{padding:8px 0 2px; display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--ink-2)}
+.holelog .body .ln{display:flex; gap:8px}
+.holelog .body .ln .a{margin-left:auto; font-weight:650; color:var(--ink)}
+.badge-dbl{font-size:10px; font-weight:700; padding:1px 5px; border-radius:5px; background:var(--gold-soft); color:var(--gold); border:1px solid var(--gold-line)}
+
+/* ── settings ────────────────────────────── */
+.row{display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid var(--line)}
+.row:first-child{border-top:none}
+.row .k{font-size:14px; font-weight:600; margin-right:auto}
+.row .k small{display:block; font-size:11.5px; color:var(--ink-3); font-weight:450; margin-top:1px; line-height:1.35}
+input[type="text"],input[type="number"]{
+  background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:7px 10px; width:100%;
+}
+input[type="number"]{width:106px; text-align:right}
+.seg{display:flex; gap:3px; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:2px}
+.seg button{padding:5px 10px; border-radius:7px; font-size:12.5px; font-weight:600; color:var(--ink-3)}
+.seg button[aria-pressed="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow)}
+.sw{width:44px; height:26px; border-radius:13px; background:var(--line-strong); position:relative; transition:background .15s; flex:0 0 auto}
+.sw::after{content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .15s; box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sw[aria-pressed="true"]{background:var(--accent)}
+.sw[aria-pressed="true"]::after{transform:translateX(18px)}
+
+.plist{display:flex; flex-direction:column}
+.pedit{display:flex; align-items:center; gap:8px; padding:9px 14px; border-top:1px solid var(--line)}
+.pedit:first-child{border-top:none}
+.pedit .idx{width:18px; font-size:11px; color:var(--ink-3); font-weight:700}
+.pedit .del{width:30px; height:30px; border-radius:8px; color:var(--ink-3); font-size:15px; display:grid; place-items:center; flex:0 0 auto}
+.addbtn{padding:11px 14px; border-top:1px solid var(--line); font-size:13.5px; font-weight:650; color:var(--accent); text-align:left; width:100%}
+.addbtn:disabled{color:var(--ink-3)}
+
+.btnrow{display:flex; gap:8px; flex-wrap:wrap}
+.btn{
+  flex:1; min-width:120px; padding:11px 14px; border-radius:11px; border:1px solid var(--line);
+  background:var(--surface); font-size:13.5px; font-weight:650; text-align:center; box-shadow:var(--shadow);
+}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.btn.danger{color:var(--neg)}
+
+.empty{padding:26px 16px; text-align:center; color:var(--ink-3); font-size:13.5px; line-height:1.6}
+
+.savedrow{display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid var(--line)}
+.savedrow:first-child{border-top:none}
+.savedrow .n{margin-right:auto; min-width:0}
+.savedrow .n b{display:block; font-size:13.5px; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.savedrow .n span{font-size:11.5px; color:var(--ink-3)}
+.savedrow button{font-size:12px; font-weight:650; padding:5px 9px; border-radius:7px; border:1px solid var(--line)}
+
+.toast{
+  position:fixed; left:50%; bottom:26px; transform:translate(-50%,14px); opacity:0; pointer-events:none;
+  background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:11px; font-size:13px; font-weight:600;
+  transition:opacity .18s, transform .18s; z-index:60; max-width:90vw; text-align:center;
+}
+.toast.show{opacity:1; transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <b>골프 내기 정산</b>
+      <span id="brandSub">—</span>
+    </div>
+    <button class="iconbtn" id="themeBtn" title="테마 전환" aria-label="테마 전환">◐</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="score" aria-selected="true">스코어</button>
+    <button role="tab" data-tab="result" aria-selected="false">정산</button>
+    <button role="tab" data-tab="setup" aria-selected="false">설정</button>
+  </div>
+
+  <div id="tab-score"></div>
+  <div id="tab-result" class="hidden"></div>
+  <div id="tab-setup" class="hidden"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ══════════════════════════════════════════
+   상태
+   ══════════════════════════════════════════ */
+const LS_CUR = "golfbet.current.v1";
+const LS_LIB = "golfbet.rounds.v1";
+const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,5,4,3,4,4,5,3,4];
+
+function newHole(i){
+  return { par: DEF_PAR[i % 18], amount: null, force: null,
+           s:{}, putt:{}, ob:{}, hz:{}, pen:{} };
+}
+function freshState(){
+  return {
+    title: "",
+    date: new Date().toISOString().slice(0,10),
+    players: [
+      {id:"p1", name:"A"}, {id:"p2", name:"B"},
+      {id:"p3", name:"C"}, {id:"p4", name:"D"}
+    ],
+    holeCount: 18,
+    base: 1000,
+    pen: { ob: 3000, hz: 2000, pen: 1000 },
+    cfg: {
+      mult: 2,
+      trigTriple: true,   // 트리플 이상(파3는 더블 이상)
+      trigPutt:  false,   // 3퍼트 이상
+      trigOB:    true,    // OB 발생
+      trigHZ:    false,   // 해저드 진입
+      when: "same",       // same | next
+      stack: false,       // 연속 배판 누적
+      dblPen: false,      // 페널티에도 배판 적용
+      penMode: "each"     // each(각자에게) | split(1인분 나눔)
+    },
+    holes: Array.from({length:18}, (_,i)=>newHole(i)),
+    cur: 0
+  };
+}
+let S = load() || freshState();
+let TAB = "score";
+
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_CUR);
+    if(!raw) return null;
+    const o = JSON.parse(raw);
+    if(!o || !Array.isArray(o.players)) return null;
+    const base = freshState();
+    o.cfg = Object.assign(base.cfg, o.cfg||{});
+    o.pen = Object.assign(base.pen, o.pen||{});
+    return o;
+  }catch(e){ return null; }
+}
+function save(){ try{ localStorage.setItem(LS_CUR, JSON.stringify(S)); }catch(e){} }
+
+/* ══════════════════════════════════════════
+   계산
+   ══════════════════════════════════════════ */
+const P = () => S.players;
+const holesInPlay = () => S.holes.slice(0, S.holeCount);
+const won = n => (n<0?"-":"") + "₩" + Math.abs(Math.round(n)).toLocaleString("ko-KR");
+const wonS = n => (n>0?"+":n<0?"-":"") + "₩" + Math.abs(Math.round(n)).toLocaleString("ko-KR");
+
+function holeAmount(i){
+  const h = S.holes[i];
+  if(h.amount != null) return h.amount;
+  // 명시적으로 지정된 가장 가까운 이전 홀의 금액을 이어받음
+  for(let k=i-1;k>=0;k--) if(S.holes[k].amount != null) return S.holes[k].amount;
+  return S.base;
+}
+
+// 그 홀에서 배판 조건이 발생했는지
+function triggersAt(i){
+  const h = S.holes[i]; if(!h) return [];
+  const c = S.cfg, out = [];
+  for(const p of P()){
+    const sc = h.s[p.id];
+    if(c.trigTriple && sc != null){
+      const over = sc - h.par;
+      if(h.par === 3 ? over >= 2 : over >= 3) out.push(p.name + " " + (h.par===3?"더블+":"트리플+"));
+    }
+    if(c.trigPutt && (h.putt[p.id]||0) >= 3) out.push(p.name + " 3퍼트");
+    if(c.trigOB && (h.ob[p.id]||0) > 0) out.push(p.name + " OB");
+    if(c.trigHZ && (h.hz[p.id]||0) > 0) out.push(p.name + " 해저드");
+  }
+  return out;
+}
+
+// 해당 홀에 적용되는 배판 정보
+function doubleAt(i){
+  const h = S.holes[i];
+  const src = S.cfg.when === "same" ? i : i-1;
+  const reasons = src >= 0 ? triggersAt(src) : [];
+  let auto = reasons.length > 0;
+  let streak = 0;
+  if(auto && S.cfg.stack){
+    // 연속으로 조건이 걸린 홀 수만큼 배수 누적
+    let k = src;
+    while(k >= 0 && triggersAt(k).length > 0){ streak++; k--; }
+  }
+  const on = h.force == null ? auto : h.force;
+  const power = on ? (S.cfg.stack && auto ? Math.max(1,streak) : 1) : 0;
+  const mult = on ? Math.pow(S.cfg.mult, power || 1) : 1;
+  return { on, auto, reasons, mult, srcHole: src };
+}
+
+/* 한 홀의 모든 이체를 계산 — 합계는 항상 0원 */
+function settleHole(i){
+  const h = S.holes[i];
+  const d = doubleAt(i);
+  const amt = holeAmount(i) * d.mult;
+  const pl = P();
+  const pays = [];  // {from, to, value, kind}
+
+  // 1) 타수 정산 — 모든 짝을 1:1 비교
+  for(let a=0;a<pl.length;a++){
+    for(let b=a+1;b<pl.length;b++){
+      const sa = h.s[pl[a].id], sb = h.s[pl[b].id];
+      if(sa == null || sb == null) continue;
+      const diff = sb - sa;
+      if(diff === 0) continue;
+      const loser = diff > 0 ? pl[b] : pl[a];
+      const winner = diff > 0 ? pl[a] : pl[b];
+      pays.push({ from: loser.id, to: winner.id, value: Math.abs(diff) * amt, kind:"stroke" });
+    }
+  }
+
+  // 2) 페널티 정산 — 발생자가 나머지 전원에게
+  const pAmt = S.cfg.dblPen ? d.mult : 1;
+  for(const p of pl){
+    const total = ((h.ob[p.id]||0) * S.pen.ob
+                 + (h.hz[p.id]||0) * S.pen.hz
+                 + (h.pen[p.id]||0) * S.pen.pen) * pAmt;
+    if(total <= 0) continue;
+    const others = pl.filter(q => q.id !== p.id && h.s[q.id] != null);
+    if(!others.length) continue;
+    const per = S.cfg.penMode === "each" ? total : total / others.length;
+    for(const q of others) pays.push({ from:p.id, to:q.id, value: per, kind:"penalty" });
+  }
+  return { pays, amount: amt, dbl: d };
+}
+
+function settleAll(){
+  const pl = P();
+  const net = {}, gross = {};
+  pl.forEach(p => { net[p.id] = 0; gross[p.id] = {}; pl.forEach(q => gross[p.id][q.id] = 0); });
+  const perHole = [];
+  for(let i=0;i<S.holeCount;i++){
+    const r = settleHole(i);
+    for(const t of r.pays){
+      net[t.from] -= t.value; net[t.to] += t.value;
+      gross[t.from][t.to] += t.value;
+    }
+    perHole.push(r);
+  }
+  return { net, gross, perHole };
+}
+
+/* 순액 기준 최소 송금 */
+function minimalTransfers(net){
+  const debt = P().map(p => ({ id:p.id, v: Math.round(net[p.id]) })).filter(x => x.v !== 0);
+  const out = [];
+  const neg = debt.filter(x=>x.v<0).sort((a,b)=>a.v-b.v);
+  const pos = debt.filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  let i=0, j=0;
+  while(i<neg.length && j<pos.length){
+    const give = Math.min(-neg[i].v, pos[j].v);
+    if(give > 0) out.push({ from:neg[i].id, to:pos[j].id, value:give });
+    neg[i].v += give; pos[j].v -= give;
+    if(neg[i].v === 0) i++;
+    if(pos[j].v === 0) j++;
+  }
+  return out;
+}
+
+const nameOf = id => (P().find(p=>p.id===id)||{name:"?"}).name;
+const holeDone = i => P().some(p => S.holes[i].s[p.id] != null);
+
+/* 홀 이름 — 18홀이면 전반/후반 각 1~9번 */
+const halfOf = i => S.holeCount === 18 ? (i < 9 ? "전반" : "후반") : "";
+const holeNo = i => S.holeCount === 18 ? (i % 9) + 1 : i + 1;
+const holeLabel = i => (halfOf(i) ? halfOf(i) + " " : "") + holeNo(i) + "번";
+
+/* ══════════════════════════════════════════
+   렌더
+   ══════════════════════════════════════════ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render(){
+  $("#brandSub").textContent =
+    P().map(p=>p.name).join(" · ") + " · 타당 " + won(S.base);
+  ["score","result","setup"].forEach(t=>{
+    $("#tab-"+t).classList.toggle("hidden", t !== TAB);
+  });
+  document.querySelectorAll('[role="tab"]').forEach(b=>{
+    b.setAttribute("aria-selected", String(b.dataset.tab === TAB));
+  });
+  if(TAB === "score") renderScore();
+  if(TAB === "result") renderResult();
+  if(TAB === "setup") renderSetup();
+  save();
+}
+
+/* ── 스코어 탭 ───────────────────────────── */
+function renderScore(){
+  const i = S.cur, h = S.holes[i], d = doubleAt(i), amt = holeAmount(i);
+  const r = settleHole(i);
+  const hnet = {}; P().forEach(p=>hnet[p.id]=0);
+  r.pays.forEach(t=>{ hnet[t.from]-=t.value; hnet[t.to]+=t.value; });
+
+  const chip = k => {
+    const dk = doubleAt(k);
+    return `<button class="hchip ${holeDone(k)?"done":""} ${dk.on?"dbl":""}"
+      data-go="${k}" aria-current="${k===i}" title="${holeLabel(k)}">
+      <b>${holeNo(k)}</b><i>${dk.on ? "배판" : "P"+S.holes[k].par}</i></button>`;
+  };
+  let strip;
+  if(S.holeCount === 18){
+    const front = Array.from({length:9},(_,k)=>chip(k)).join("");
+    const back  = Array.from({length:9},(_,k)=>chip(k+9)).join("");
+    strip = `<div class="halfrow"><span class="halflab">전반</span>
+        <div class="holestrip" id="strip">${front}</div></div>
+      <div class="halfrow"><span class="halflab">후반</span>
+        <div class="holestrip" id="strip2">${back}</div></div>`;
+  } else {
+    strip = `<div class="holestrip" id="strip">
+      ${Array.from({length:S.holeCount},(_,k)=>chip(k)).join("")}</div>`;
+  }
+
+  // 현재까지의 손익 (입력된 모든 홀 기준)
+  const run = settleAll().net;
+  const playedN = Array.from({length:S.holeCount},(_,k)=>k).filter(holeDone).length;
+  const lead = Math.max(...P().map(p=>Math.round(run[p.id])));
+  const stand = P().length < 2 || playedN === 0 ? "" : `
+    <div class="standhead"><h2>현재까지</h2><span>${playedN}개 홀 입력됨</span></div>
+    <div class="stand">${P().map(p=>{
+      const v = Math.round(run[p.id]);
+      return `<div class="sc ${v===lead&&v>0?"lead":""}">
+        <span class="n">${esc(p.name)}</span>
+        <span class="v num ${v>0?"pos":v<0?"neg":"zero"}">${v===0?"±₩0":wonS(v)}</span></div>`;
+    }).join("")}</div>`;
+
+  const rows = P().map(p => {
+    const sc = h.s[p.id];
+    const rel = sc==null ? "" : (sc-h.par===0 ? "파" : (sc-h.par>0 ? "+"+(sc-h.par) : String(sc-h.par)));
+    const v = Math.round(hnet[p.id]);
+    return `<div class="prow">
+      <div class="prow-top">
+        <button class="pname" data-rename="${p.id}" title="탭해서 이름 변경">${esc(p.name)}<span class="penc">✎</span></button>
+        ${rel?`<span class="ptag">${rel}</span>`:""}
+        <span class="pdelta">
+          <b class="num ${v>0?"pos":v<0?"neg":"zero"}">${v===0?"—":wonS(v)}</b>
+          <i class="num">누적 ${wonS(Math.round(run[p.id]))}</i>
+        </span>
+      </div>
+      <div class="prow-top">
+        <div class="scorebox">
+          <button data-sc="${p.id}" data-dv="-1" aria-label="타수 감소">−</button>
+          <span class="sv num ${sc==null?"empty":""}">${sc==null?"–":sc}</span>
+          <button data-sc="${p.id}" data-dv="1" aria-label="타수 증가">+</button>
+        </div>
+        <div class="pills">
+          ${pill(p.id,"putt","퍼트",h.putt[p.id]||0)}
+          ${pill(p.id,"ob","OB",h.ob[p.id]||0)}
+          ${pill(p.id,"hz","해저드",h.hz[p.id]||0)}
+          ${pill(p.id,"pen","벌타",h.pen[p.id]||0)}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  const why = d.reasons.length
+    ? d.reasons.slice(0,3).join(", ") + (d.reasons.length>3 ? " 외 "+(d.reasons.length-3) : "")
+    : (h.force ? "직접 지정" : "");
+  const banner = d.on
+    ? `<div class="dblbanner"><span>배판 ×${d.mult}</span>
+         <span class="why">${esc(why)}${S.cfg.when==="next"&&d.auto?" (앞 홀 발생)":""}</span>
+         <button data-force="off">해제</button></div>`
+    : `<div class="dblbanner off"><span>일반 홀</span>
+         <span class="why">조건 없음</span>
+         <button data-force="on">배판으로</button></div>`;
+
+  $("#tab-score").innerHTML = `
+    ${stand}
+    ${strip}
+    <div class="card sect" style="gap:0; margin-bottom:14px">
+      <div class="holehead">
+        <div class="holehead-top">
+          <button class="navbtn" data-nav="-1" ${i===0?"disabled":""} aria-label="이전 홀">‹</button>
+          <div class="holenum">
+            <b>${halfOf(i)?`<span style="font-size:15px; font-weight:650">${halfOf(i)}</span> `:""}${holeNo(i)}<span style="font-size:13px">번</span></b>
+            <span>전체 ${i+1}/${S.holeCount}</span></div>
+          <div class="parpick">
+            ${[3,4,5].map(v=>`<button data-par="${v}" aria-pressed="${h.par===v}">파${v}</button>`).join("")}
+          </div>
+          <button class="navbtn" data-nav="1" ${i===S.holeCount-1?"disabled":""} aria-label="다음 홀">›</button>
+        </div>
+        <div class="moneyrow">
+          <span class="lab">타당</span>
+          <span class="val num">${won(amt * d.mult)}${d.on?`<small>&nbsp;← ${won(amt)} ×${d.mult}</small>`:""}</span>
+          <div class="stepper">
+            <button data-amt="-1" aria-label="금액 내리기">−</button>
+            <button data-amt="1" aria-label="금액 올리기">+</button>
+          </div>
+          <button class="linkbtn" data-amt="rest">이후 전체</button>
+        </div>
+        ${banner}
+      </div>
+      ${rows}
+    </div>
+    <div class="btnrow">
+      <button class="btn" data-nav="-1" ${i===0?"disabled":""}>이전 홀</button>
+      <button class="btn primary" data-nav="1" ${i===S.holeCount-1?"disabled":""}>다음 홀 ›</button>
+    </div>`;
+
+  requestAnimationFrame(()=>{
+    document.querySelectorAll(".holestrip").forEach(sp=>{
+      const cur = sp.querySelector('[aria-current="true"]');
+      if(!cur) return;
+      sp.scrollLeft = Math.max(0, cur.offsetLeft - sp.offsetLeft - sp.clientWidth/2 + cur.offsetWidth/2);
+    });
+  });
+}
+/* 이름을 그 자리에서 고쳐 쓰기 */
+function startRename(btn, id){
+  const p = P().find(x=>x.id===id); if(!p) return;
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.value = p.name; inp.maxLength = 10;
+  inp.className = "nameinput"; inp.placeholder = "이름";
+  let done = false;
+  const commit = ok => {
+    if(done) return; done = true;
+    if(ok){
+      const v = inp.value.trim();
+      if(v && v !== p.name){ p.name = v; save(); }
+    }
+    render();
+  };
+  inp.addEventListener("keydown", ev=>{
+    if(ev.key === "Enter"){ ev.preventDefault(); commit(true); }
+    if(ev.key === "Escape"){ ev.preventDefault(); commit(false); }
+  });
+  inp.addEventListener("blur", ()=>commit(true));
+  btn.replaceWith(inp);
+  inp.focus(); inp.select();
+}
+
+function pill(pid,key,label,n){
+  return `<span class="pill ${n>0?"on":""}">
+    <button class="lbl" data-c="${pid}|${key}|1">${label}${n>0?` <b>${n}</b>`:""}</button>
+    ${n>0?`<button class="minus" data-c="${pid}|${key}|-1" aria-label="${label} 감소">−</button>`:""}
+  </span>`;
+}
+
+/* ── 정산 탭 ─────────────────────────────── */
+function renderResult(){
+  const pl = P();
+  if(pl.length < 2){
+    $("#tab-result").innerHTML = `<div class="card"><div class="empty">정산하려면 플레이어가 2명 이상이어야 합니다.<br>설정 탭에서 추가하세요.</div></div>`;
+    return;
+  }
+  const played = Array.from({length:S.holeCount},(_,i)=>i).filter(holeDone);
+  if(!played.length){
+    $("#tab-result").innerHTML = `<div class="card"><div class="empty">아직 입력된 스코어가 없습니다.<br>스코어 탭에서 1번 홀부터 입력해 주세요.</div></div>`;
+    return;
+  }
+  const { net, gross, perHole } = settleAll();
+  const strokes = {}; pl.forEach(p => strokes[p.id] = played.reduce((a,i)=>a+(S.holes[i].s[p.id]||0),0));
+  const parSum = played.reduce((a,i)=>a+S.holes[i].par,0);
+  const order = pl.slice().sort((a,b)=>net[b.id]-net[a.id]);
+
+  // 전반/후반 소계
+  const half = { f:{}, b:{} };
+  pl.forEach(p => { half.f[p.id] = 0; half.b[p.id] = 0; });
+  for(let i=0;i<S.holeCount;i++){
+    const side = i < 9 ? half.f : half.b;
+    for(const t of perHole[i].pays){ side[t.from] -= t.value; side[t.to] += t.value; }
+  }
+  const splitHalves = S.holeCount === 18 && played.some(i=>i>=9) && played.some(i=>i<9);
+
+  const netHtml = order.map((p,k)=>{
+    const v = Math.round(net[p.id]);
+    return `<div class="netrow">
+      <span class="rank num">${k+1}</span>
+      <span class="nm">${esc(p.name)}
+        ${splitHalves?`<small class="halves num">전반 ${wonS(Math.round(half.f[p.id]))} · 후반 ${wonS(Math.round(half.b[p.id]))}</small>`:""}
+      </span>
+      <span class="sc num">${strokes[p.id]||0}타 · ${strokes[p.id]-parSum>0?"+":""}${strokes[p.id]-parSum}</span>
+      <span class="amt num ${v>0?"pos":v<0?"neg":"zero"}">${v===0?"±₩0":wonS(v)}</span>
+    </div>`;
+  }).join("");
+
+  const tr = minimalTransfers(net);
+  const trHtml = tr.length
+    ? tr.map(t=>`<div class="pay">
+        <span class="from">${esc(nameOf(t.from))}</span>
+        <span class="arrow">→</span>
+        <span class="to">${esc(nameOf(t.to))}</span>
+        <span class="amt num">${won(t.value)}</span></div>`).join("")
+    : `<div class="empty">주고받을 금액이 없습니다.</div>`;
+
+  let mat = `<div class="tablewrap"><table><thead><tr><th>지급 ↓ / 수령 →</th>
+    ${pl.map(p=>`<th>${esc(p.name)}</th>`).join("")}<th>합계</th></tr></thead><tbody>`;
+  for(const a of pl){
+    const sum = pl.reduce((s,b)=>s+gross[a.id][b.id],0);
+    mat += `<tr><td>${esc(a.name)}</td>`;
+    for(const b of pl){
+      const v = Math.round(gross[a.id][b.id]);
+      mat += a.id===b.id ? `<td class="z">·</td>` : `<td class="num ${v?"":"z"}">${v?won(v):"–"}</td>`;
+    }
+    mat += `<td class="num"><b>${won(sum)}</b></td></tr>`;
+  }
+  mat += `</tbody></table></div>
+    <div class="matnote">가로줄이 낸 돈, 세로줄이 받은 돈입니다. 상계 전 실제 발생액이라 홀별 합과 정확히 일치합니다.</div>`;
+
+  const logs = played.map(i=>{
+    const r = perHole[i], h = S.holes[i];
+    const agg = {}; r.pays.forEach(t=>{
+      const k = t.from+"|"+t.to; agg[k] = (agg[k]||0) + t.value;
+    });
+    const lines = Object.entries(agg).map(([k,v])=>{
+      const [f,t] = k.split("|");
+      return `<div class="ln"><span>${esc(nameOf(f))} → ${esc(nameOf(t))}</span><span class="a num">${won(v)}</span></div>`;
+    }).join("") || `<div class="ln"><span>이동 금액 없음</span></div>`;
+    const tot = Object.values(agg).reduce((a,b)=>a+b,0);
+    return `<details class="holelog">
+      <summary>
+        <span class="hn">${holeLabel(i)}</span>
+        <span class="meta">파${h.par} · ${won(r.amount)}${r.dbl.on?" ":""}</span>
+        ${r.dbl.on?`<span class="badge-dbl">배판 ×${r.dbl.mult}</span>`:""}
+        <span class="tot num">${won(tot)}</span>
+      </summary>
+      <div class="body">${lines}</div>
+    </details>`;
+  }).join("");
+
+  $("#tab-result").innerHTML = `
+    <div class="sect"><div class="sect-head"><h2>순액</h2><span class="hint">${played.length}개 홀 반영</span></div>
+      <div class="card netgrid">${netHtml}</div></div>
+    <div class="sect"><div class="sect-head"><h2>이렇게 주고받으면 끝</h2><span class="hint">최소 송금 ${tr.length}건</span></div>
+      <div class="card">${trHtml}</div></div>
+    <div class="sect"><div class="sect-head"><h2>총액 매트릭스</h2></div>
+      <div class="card">${mat}</div></div>
+    <div class="sect"><div class="sect-head"><h2>홀별 내역</h2><span class="hint">탭하면 펼쳐짐</span></div>
+      <div class="card">${logs}</div></div>
+    <div class="btnrow">
+      <button class="btn primary" id="copyBtn">정산표 복사</button>
+      <button class="btn" id="saveRoundBtn">이 라운드 저장</button>
+    </div>`;
+}
+
+/* ── 설정 탭 ─────────────────────────────── */
+function renderSetup(){
+  const c = S.cfg;
+  const players = P().map((p,i)=>`
+    <div class="pedit">
+      <span class="idx num">${i+1}</span>
+      <input type="text" value="${esc(p.name)}" data-pn="${p.id}" maxlength="10" placeholder="이름">
+      <button class="del" data-pdel="${p.id}" aria-label="삭제" ${P().length<=1?"disabled":""}>✕</button>
+    </div>`).join("");
+
+  const lib = getLib();
+  const libHtml = lib.length ? lib.map(r=>`
+    <div class="savedrow">
+      <span class="n"><b>${esc(r.title||"제목 없는 라운드")}</b><span>${r.date} · ${esc(r.names)} · ${r.holes}홀</span></span>
+      <button data-libload="${r.id}">불러오기</button>
+      <button data-libdel="${r.id}">삭제</button>
+    </div>`).join("") : `<div class="empty">저장된 라운드가 없습니다.</div>`;
+
+  $("#tab-setup").innerHTML = `
+    <div class="sect"><div class="sect-head"><h2>플레이어</h2><span class="hint">${P().length}명 / 최대 5명</span></div>
+      <div class="card plist">${players}
+        <button class="addbtn" id="addP" ${P().length>=5?"disabled":""}>+ 플레이어 추가</button></div></div>
+
+    <div class="sect"><div class="sect-head"><h2>라운드</h2></div>
+      <div class="card">
+        <div class="row"><span class="k">라운드 이름</span>
+          <input type="text" id="title" value="${esc(S.title)}" placeholder="예: 7월 남서울" style="width:170px"></div>
+        <div class="row"><span class="k">날짜</span>
+          <input type="text" id="date" value="${esc(S.date)}" style="width:130px"></div>
+        <div class="row"><span class="k">홀 수</span>
+          <div class="seg">${[9,18].map(v=>`<button data-hc="${v}" aria-pressed="${S.holeCount===v}">${v}홀</button>`).join("")}</div></div>
+      </div></div>
+
+    <div class="sect"><div class="sect-head"><h2>기본 금액</h2></div>
+      <div class="card">
+        <div class="row"><span class="k">타당 금액<small>홀마다 스코어 1타 차이당 주고받는 금액. 홀별로 올리거나 내릴 수 있습니다.</small></span>
+          <input type="number" id="base" value="${S.base}" step="500" min="0"></div>
+        <div class="row"><span class="k">OB<small>1회당</small></span><input type="number" data-pen="ob" value="${S.pen.ob}" step="500" min="0"></div>
+        <div class="row"><span class="k">해저드<small>1회당</small></span><input type="number" data-pen="hz" value="${S.pen.hz}" step="500" min="0"></div>
+        <div class="row"><span class="k">기타 벌타<small>1타당</small></span><input type="number" data-pen="pen" value="${S.pen.pen}" step="500" min="0"></div>
+        <div class="row"><span class="k">페널티 지급 방식</span>
+          <div class="seg">
+            <button data-pm="each" aria-pressed="${c.penMode==="each"}">각자에게</button>
+            <button data-pm="split" aria-pressed="${c.penMode==="split"}">나눠서</button>
+          </div></div>
+        <div class="matnote">‘각자에게’는 발생자가 나머지 <b>한 명당</b> 그 금액을 냅니다(4인이면 3배 지출). ‘나눠서’는 그 금액을 나머지가 나눠 갖습니다.</div>
+      </div></div>
+
+    <div class="sect"><div class="sect-head"><h2>배판 규칙</h2></div>
+      <div class="card">
+        <div class="row"><span class="k">배수</span>
+          <div class="seg">${[2,3].map(v=>`<button data-mult="${v}" aria-pressed="${c.mult===v}">×${v}</button>`).join("")}</div></div>
+        <div class="row"><span class="k">적용 시점</span>
+          <div class="seg">
+            <button data-when="same" aria-pressed="${c.when==="same"}">발생 홀</button>
+            <button data-when="next" aria-pressed="${c.when==="next"}">다음 홀</button>
+          </div></div>
+        ${sw("trigTriple","트리플 이상","파3에서는 더블 이상",c.trigTriple)}
+        ${sw("trigPutt","3퍼트 이상","퍼트 수를 입력해야 판정됩니다",c.trigPutt)}
+        ${sw("trigOB","OB 발생","한 명이라도 OB가 나면",c.trigOB)}
+        ${sw("trigHZ","해저드 진입","한 명이라도 해저드에 빠지면",c.trigHZ)}
+        ${sw("stack","연속 누적","조건이 연달아 걸리면 ×2 → ×4 → ×8",c.stack)}
+        ${sw("dblPen","페널티에도 배판","기본은 타수 금액에만 적용",c.dblPen)}
+      </div></div>
+
+    <div class="sect"><div class="sect-head"><h2>저장된 라운드</h2></div>
+      <div class="card">${libHtml}</div></div>
+
+    <div class="btnrow">
+      <button class="btn" id="saveRoundBtn2">현재 라운드 저장</button>
+      <button class="btn danger" id="resetBtn">스코어 전체 지우기</button>
+    </div>`;
+}
+function sw(key,label,sub,on){
+  return `<div class="row"><span class="k">${label}<small>${sub}</small></span>
+    <button class="sw" data-cfg="${key}" aria-pressed="${!!on}" aria-label="${label}"></button></div>`;
+}
+
+/* ══════════════════════════════════════════
+   저장소
+   ══════════════════════════════════════════ */
+function getLib(){ try{ return JSON.parse(localStorage.getItem(LS_LIB)||"[]"); }catch(e){ return []; } }
+function saveRound(){
+  const lib = getLib();
+  const rec = {
+    id: "r"+Date.now(),
+    title: S.title,
+    date: S.date,
+    names: P().map(p=>p.name).join(", "),
+    holes: S.holeCount,
+    data: JSON.parse(JSON.stringify(S))
+  };
+  lib.unshift(rec);
+  try{ localStorage.setItem(LS_LIB, JSON.stringify(lib.slice(0,40))); toast("라운드를 저장했습니다"); }
+  catch(e){ toast("저장 공간이 부족합니다"); }
+}
+
+/* 카톡 붙여넣기용 텍스트 */
+function summaryText(){
+  const { net, perHole } = settleAll();
+  const played = Array.from({length:S.holeCount},(_,i)=>i).filter(holeDone);
+  const L = [];
+  L.push(`⛳ ${S.title||"골프 내기"} (${S.date})`);
+  L.push(`타당 ${won(S.base)} · ${played.length}홀 정산`);
+  L.push("");
+  L.push("[순액]");
+  P().slice().sort((a,b)=>net[b.id]-net[a.id]).forEach(p=>{
+    const st = played.reduce((a,i)=>a+(S.holes[i].s[p.id]||0),0);
+    L.push(`${p.name} ${st}타  ${wonS(Math.round(net[p.id]))}`);
+  });
+  const tr = minimalTransfers(net);
+  if(tr.length){
+    L.push("");
+    L.push("[송금]");
+    tr.forEach(t=>L.push(`${nameOf(t.from)} → ${nameOf(t.to)}  ${won(t.value)}`));
+  }
+  const dbls = played.filter(i=>perHole[i].dbl.on);
+  if(dbls.length){
+    L.push("");
+    L.push("[배판] " + dbls.map(i=>`${holeLabel(i)}(×${perHole[i].dbl.mult})`).join(", "));
+  }
+  return L.join("\n");
+}
+function copyText(t){
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(t).then(()=>toast("정산표를 복사했습니다"), fallback);
+  } else fallback();
+  function fallback(){
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast("정산표를 복사했습니다"); }
+    catch(e){ toast("복사에 실패했습니다"); }
+    ta.remove();
+  }
+}
+let toastT;
+function toast(msg){
+  const el = $("#toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(()=>el.classList.remove("show"), 1900);
+}
+
+/* ══════════════════════════════════════════
+   이벤트
+   ══════════════════════════════════════════ */
+document.addEventListener("click", e=>{
+  const t = e.target.closest("button");
+  if(!t) return;
+  const h = S.holes[S.cur];
+
+  if(t.dataset.tab){ TAB = t.dataset.tab; render(); return; }
+  if(t.id === "themeBtn"){
+    const cur = document.documentElement.getAttribute("data-theme");
+    const dark = cur ? cur === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+    return;
+  }
+
+  /* 스코어 */
+  if(t.dataset.rename){ startRename(t, t.dataset.rename); return; }
+  if(t.dataset.go != null){ S.cur = +t.dataset.go; render(); return; }
+  if(t.dataset.nav){ S.cur = Math.min(S.holeCount-1, Math.max(0, S.cur + +t.dataset.nav)); render(); return; }
+  if(t.dataset.par){ h.par = +t.dataset.par; render(); return; }
+  if(t.dataset.sc){
+    const id = t.dataset.sc, dv = +t.dataset.dv;
+    const cur = h.s[id] == null ? h.par : h.s[id];
+    const nv = h.s[id] == null && dv === 1 ? h.par : cur + dv;
+    if(nv < 1) delete h.s[id]; else h.s[id] = Math.min(20, nv);
+    render(); return;
+  }
+  if(t.dataset.c){
+    const [id,key,dv] = t.dataset.c.split("|");
+    const cur = h[key][id] || 0;
+    const nv = Math.max(0, Math.min(9, cur + +dv));
+    if(nv === 0) delete h[key][id]; else h[key][id] = nv;
+    render(); return;
+  }
+  if(t.dataset.amt){
+    const step = Math.max(500, Math.round(S.base/2/500)*500);
+    if(t.dataset.amt === "rest"){
+      const v = holeAmount(S.cur);
+      for(let k=S.cur;k<S.holes.length;k++) S.holes[k].amount = v;
+      toast(`${holeLabel(S.cur)} 홀부터 ${won(v)}로 적용`);
+    } else {
+      S.holes[S.cur].amount = Math.max(0, holeAmount(S.cur) + (+t.dataset.amt) * step);
+    }
+    render(); return;
+  }
+  if(t.dataset.force){
+    const d = doubleAt(S.cur);
+    h.force = (t.dataset.force === "on") ? true : (d.auto ? false : null);
+    render(); return;
+  }
+
+  /* 정산 */
+  if(t.id === "copyBtn"){ copyText(summaryText()); return; }
+  if(t.id === "saveRoundBtn" || t.id === "saveRoundBtn2"){ saveRound(); render(); return; }
+
+  /* 설정 */
+  if(t.id === "addP"){
+    if(P().length >= 5) return;
+    const used = new Set(P().map(p=>p.name));
+    const nm = "ABCDE".split("").find(x=>!used.has(x)) || "P"+(P().length+1);
+    S.players.push({ id:"p"+Date.now(), name:nm });
+    render(); return;
+  }
+  if(t.dataset.pdel){
+    if(P().length <= 1) return;
+    const id = t.dataset.pdel;
+    S.players = P().filter(p=>p.id!==id);
+    S.holes.forEach(hh=>["s","putt","ob","hz","pen"].forEach(k=>delete hh[k][id]));
+    render(); return;
+  }
+  if(t.dataset.hc){ S.holeCount = +t.dataset.hc; S.cur = Math.min(S.cur, S.holeCount-1); render(); return; }
+  if(t.dataset.pm){ S.cfg.penMode = t.dataset.pm; render(); return; }
+  if(t.dataset.mult){ S.cfg.mult = +t.dataset.mult; render(); return; }
+  if(t.dataset.when){ S.cfg.when = t.dataset.when; render(); return; }
+  if(t.dataset.cfg){ S.cfg[t.dataset.cfg] = !S.cfg[t.dataset.cfg]; render(); return; }
+  if(t.dataset.libload){
+    const rec = getLib().find(r=>r.id===t.dataset.libload);
+    if(rec){ S = rec.data; S.cfg = Object.assign(freshState().cfg, S.cfg||{}); TAB="score"; render(); toast("불러왔습니다"); }
+    return;
+  }
+  if(t.dataset.libdel){
+    const lib = getLib().filter(r=>r.id!==t.dataset.libdel);
+    localStorage.setItem(LS_LIB, JSON.stringify(lib));
+    render(); return;
+  }
+  if(t.id === "resetBtn"){
+    if(!confirm("모든 홀의 스코어와 페널티를 지웁니다. 플레이어와 금액 설정은 유지됩니다.")) return;
+    S.holes = Array.from({length:18},(_,i)=>newHole(i));
+    S.cur = 0; render(); toast("스코어를 지웠습니다"); return;
+  }
+});
+
+document.addEventListener("input", e=>{
+  const el = e.target;
+  if(el.dataset.pn){
+    const p = P().find(x=>x.id===el.dataset.pn);
+    if(p){ p.name = el.value; save(); $("#brandSub").textContent = P().map(x=>x.name).join(" · ")+" · 타당 "+won(S.base); }
+    return;
+  }
+  if(el.id === "title"){ S.title = el.value; save(); return; }
+  if(el.id === "date"){ S.date = el.value; save(); return; }
+  if(el.id === "base"){ S.base = Math.max(0, +el.value||0); save(); return; }
+  if(el.dataset.pen){ S.pen[el.dataset.pen] = Math.max(0, +el.value||0); save(); return; }
+});
+
+document.addEventListener("keydown", e=>{
+  if(TAB !== "score" || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  if(e.key === "ArrowLeft" && S.cur > 0){ S.cur--; render(); }
+  if(e.key === "ArrowRight" && S.cur < S.holeCount-1){ S.cur++; render(); }
+});
+
+render();
+})();
+</script>
+</body>
+</html>
