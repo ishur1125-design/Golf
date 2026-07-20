@@ -340,6 +340,7 @@ function freshState(){
       trigPutt:  false,   // 3퍼트 이상
       trigOB:    true,    // OB 발생
       trigHZ:    false,   // 해저드 진입
+      trigTie3:  true,    // 4인 이상일 때 3명 동타
       when: "same",       // same | next
       stack: false,       // 연속 배판 누적
       dblPen: false,      // 페널티에도 배판 적용
@@ -395,6 +396,17 @@ function triggersAt(i){
     if(c.trigPutt && (h.putt[p.id]||0) >= 3) out.push(p.name + " 3퍼트");
     if(c.trigOB && (h.ob[p.id]||0) > 0) out.push(p.name + " OB");
     if(c.trigHZ && (h.hz[p.id]||0) > 0) out.push(p.name + " 해저드");
+  }
+  // 4명 이상이 친 홀에서 3명 이상이 같은 타수면 배판
+  if(c.trigTie3){
+    const scored = P().filter(p => h.s[p.id] != null);
+    if(scored.length >= 4){
+      const tally = {};
+      scored.forEach(p => { tally[h.s[p.id]] = (tally[h.s[p.id]]||0) + 1; });
+      for(const [sc,n] of Object.entries(tally)){
+        if(n >= 3) out.push(`${n}명 동타 ${sc}타`);
+      }
+    }
   }
   return out;
 }
@@ -824,6 +836,7 @@ function renderSetup(){
         ${sw("trigPutt","3퍼트 이상","퍼트 수를 입력해야 판정됩니다",c.trigPutt)}
         ${sw("trigOB","OB 발생","한 명이라도 OB가 나면",c.trigOB)}
         ${sw("trigHZ","해저드 진입","한 명이라도 해저드에 빠지면",c.trigHZ)}
+        ${sw("trigTie3","3명 동타","4명 이상이 친 홀에서 세 명 이상 타수가 같으면",c.trigTie3)}
         ${sw("stack","연속 누적","조건이 연달아 걸리면 ×2 → ×4 → ×8",c.stack)}
         ${sw("dblPen","페널티에도 배판","기본은 타수 금액에만 적용",c.dblPen)}
       </div></div>
