@@ -158,6 +158,13 @@ h1,h2,h3{margin:0; font-weight:650; text-wrap:balance; letter-spacing:-.01em}
   color:var(--accent); font-size:12px; font-weight:600; line-height:1.45;
 }
 .bonusnote b{font-weight:700; font-variant-numeric:tabular-nums}
+.nearrow{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:9px 12px; border-radius:11px; background:var(--surface-2); border:1px solid var(--line)}
+.nearrow .nlab{font-size:11.5px; color:var(--ink-3); font-weight:700; letter-spacing:.04em}
+.nearrow .nval{margin-left:auto; font-size:12.5px; font-weight:650; color:var(--accent)}
+.npick{display:flex; gap:4px; flex-wrap:wrap}
+.npick button{padding:5px 10px; border-radius:8px; border:1px solid var(--line); background:var(--surface); font-size:12.5px; font-weight:600; color:var(--ink-2); max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.npick button[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.spitnote{padding:8px 12px; border-radius:11px; background:var(--surface-2); border:1px solid var(--neg); color:var(--neg); font-size:12px; font-weight:600}
 
 /* ── player rows ─────────────────────────── */
 .prow{padding:12px 14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:9px}
@@ -326,7 +333,7 @@ const LS_LIB = "golfbet.rounds.v1";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,5,4,3,4,4,5,3,4];
 
 function newHole(i){
-  return { par: DEF_PAR[i % 18], amount: null, force: null,
+  return { par: DEF_PAR[i % 18], amount: null, force: null, near: null,
            s:{}, putt:{}, ob:{}, hz:{}, pen:{} };
 }
 function freshState(){
@@ -354,7 +361,10 @@ function freshState(){
       penMode: "each",    // each(각자에게) | split(1인분 나눔)
       birdieOn: true,     // 버디값 사용
       birdie: { mode:"link", mult:1, fixed:5000 },   // 버디값
-      eagle:  { mode:"link", mult:2, fixed:10000 }   // 이글 이상
+      eagle:  { mode:"link", mult:2, fixed:10000 },  // 이글 이상
+      nearOn: true,       // 파3 니어값
+      spitOn: true,       // 니어가 3퍼트면 토해내기
+      handi: { on:true, amount:null, dir:"low" }     // 후핸디 (low = 잘 친 사람이 지급)
     },
     holes: Array.from({length:18}, (_,i)=>newHole(i)),
     cur: 0
@@ -372,7 +382,9 @@ function load(){
     const base = freshState();
     const bird = Object.assign(base.cfg.birdie, (o.cfg||{}).birdie||{});
     const eag  = Object.assign(base.cfg.eagle,  (o.cfg||{}).eagle ||{});
-    o.cfg = Object.assign(base.cfg, o.cfg||{}, { birdie: bird, eagle: eag });
+    const hd   = Object.assign(base.cfg.handi,  (o.cfg||{}).handi ||{});
+    o.cfg = Object.assign(base.cfg, o.cfg||{}, { birdie: bird, eagle: eag, handi: hd });
+    (o.holes||[]).forEach(h => { if(h.near === undefined) h.near = null; });
     o.pen = Object.assign(base.pen, o.pen||{});
     return o;
   }catch(e){ return null; }
@@ -484,7 +496,16 @@ function settleHole(i){
     }
   }
 
-  // 3) 페널티 정산 — 발생자가 나머지 전원에게
+  // 3) 니어리스트 (파3) — 나머지 전원이 니어에게. 니어가 3퍼트면 같은 금액을 도로 토해냄
+  if(h.par === 3 && h.near && h.s[h.near] != null){
+    const others = pl.filter(q => q.id !== h.near && h.s[q.id] != null);
+    if(S.cfg.nearOn) for(const q of others)
+      pays.push({ from:q.id, to:h.near, value:amt, kind:"near" });
+    if(S.cfg.spitOn && (h.putt[h.near]||0) >= 3) for(const q of others)
+      pays.push({ from:h.near, to:q.id, value:amt, kind:"spit" });
+  }
+
+  // 4) 페널티 정산 — 발생자가 나머지 전원에게
   const pAmt = S.cfg.dblPen ? d.mult : 1;
   for(const p of pl){
     const total = ((h.ob[p.id]||0) * S.pen.ob
@@ -499,10 +520,48 @@ function settleHole(i){
   return { pays, amount: amt, dbl: d };
 }
 
+/* 후핸디 — 라운드 총타수 차이만큼, 잘 친 사람이 못 친 사람에게 */
+function totalStrokes(){
+  const t = {};
+  P().forEach(p => {
+    t[p.id] = { sum:0, holes:0 };
+    for(let i=0;i<S.holeCount;i++){
+      const sc = S.holes[i].s[p.id];
+      if(sc != null){ t[p.id].sum += sc; t[p.id].holes++; }
+    }
+  });
+  return t;
+}
+function handiPays(){
+  const c = S.cfg.handi;
+  if(!c.on) return [];
+  const pl = P().filter(p => totalStrokes()[p.id].holes > 0);
+  if(pl.length < 2) return [];
+  const amt = (c.amount == null ? S.base : c.amount);
+  if(amt <= 0) return [];
+  const tot = totalStrokes();
+  const out = [];
+  for(let a=0;a<pl.length;a++){
+    for(let b=a+1;b<pl.length;b++){
+      const sa = tot[pl[a].id].sum, sb = tot[pl[b].id].sum;
+      if(sa === sb) continue;
+      const better = sa < sb ? pl[a] : pl[b];   // 타수가 적은 쪽
+      const worse  = sa < sb ? pl[b] : pl[a];
+      const from = c.dir === "low" ? better : worse;
+      const to   = c.dir === "low" ? worse  : better;
+      out.push({ from:from.id, to:to.id, value: Math.abs(sa-sb) * amt, strokes: Math.abs(sa-sb) });
+    }
+  }
+  return out;
+}
+
 function settleAll(){
   const pl = P();
-  const net = {}, gross = {};
-  pl.forEach(p => { net[p.id] = 0; gross[p.id] = {}; pl.forEach(q => gross[p.id][q.id] = 0); });
+  const net = {}, gross = {}, handiNet = {};
+  pl.forEach(p => {
+    net[p.id] = 0; handiNet[p.id] = 0;
+    gross[p.id] = {}; pl.forEach(q => gross[p.id][q.id] = 0);
+  });
   const perHole = [];
   for(let i=0;i<S.holeCount;i++){
     const r = settleHole(i);
@@ -512,7 +571,14 @@ function settleAll(){
     }
     perHole.push(r);
   }
-  return { net, gross, perHole };
+  const handi = handiPays();
+  for(const t of handi){
+    handiNet[t.from] -= t.value; handiNet[t.to] += t.value;
+    gross[t.from][t.to] += t.value;
+  }
+  const total = {};
+  pl.forEach(p => total[p.id] = net[p.id] + handiNet[p.id]);
+  return { net, gross, perHole, handi, handiNet, total };
 }
 
 /* 순액 기준 최소 송금 */
@@ -673,6 +739,7 @@ function renderScore(){
           <button class="linkbtn" data-amt="rest">이후 전체</button>
         </div>
         ${banner}
+        ${nearPicker(i, r.amount)}
         ${bonusNote(i, r.amount)}
       </div>
       ${rows}
@@ -690,6 +757,23 @@ function renderScore(){
     });
   });
 }
+/* 파3 니어리스트 고르기 */
+function nearPicker(i, amt){
+  const h = S.holes[i];
+  if(h.par !== 3 || !S.cfg.nearOn) return "";
+  const others = P().filter(p => p.id !== h.near && h.s[p.id] != null).length;
+  const spit = h.near && S.cfg.spitOn && (h.putt[h.near]||0) >= 3;
+  return `<div class="nearrow">
+    <span class="nlab">니어</span>
+    <div class="npick">
+      <button data-near="" aria-pressed="${!h.near}">없음</button>
+      ${P().map(p=>`<button data-near="${p.id}" aria-pressed="${h.near===p.id}">${esc(p.name)}</button>`).join("")}
+    </div>
+    ${h.near ? `<span class="nval num">${won(amt)} ×${others}명</span>` : ""}
+  </div>
+  ${spit ? `<div class="spitnote">토해내기 — ${esc(nameOf(h.near))}가 니어를 잡고 3퍼트, ${won(amt)}씩 ${others}명에게 반납</div>` : ""}`;
+}
+
 /* 이 홀에 버디값이 걸렸다면 누가 얼마를 받는지 */
 function bonusNote(i, amt){
   if(!S.cfg.birdieOn) return "";
@@ -749,10 +833,11 @@ function renderResult(){
     $("#tab-result").innerHTML = `<div class="card"><div class="empty">아직 입력된 스코어가 없습니다.<br>스코어 탭에서 1번 홀부터 입력해 주세요.</div></div>`;
     return;
   }
-  const { net, gross, perHole } = settleAll();
+  const { net, gross, perHole, handi, handiNet, total } = settleAll();
   const strokes = {}; pl.forEach(p => strokes[p.id] = played.reduce((a,i)=>a+(S.holes[i].s[p.id]||0),0));
   const parSum = played.reduce((a,i)=>a+S.holes[i].par,0);
-  const order = pl.slice().sort((a,b)=>net[b.id]-net[a.id]);
+  const order = pl.slice().sort((a,b)=>total[b.id]-total[a.id]);
+  const hasHandi = handi.length > 0;
 
   // 전반/후반 소계
   const half = { f:{}, b:{} };
@@ -764,18 +849,21 @@ function renderResult(){
   const splitHalves = S.holeCount === 18 && played.some(i=>i>=9) && played.some(i=>i<9);
 
   const netHtml = order.map((p,k)=>{
-    const v = Math.round(net[p.id]);
+    const v = Math.round(total[p.id]);
+    const sub = [];
+    if(splitHalves) sub.push(`전반 ${wonS(Math.round(half.f[p.id]))} · 후반 ${wonS(Math.round(half.b[p.id]))}`);
+    if(hasHandi) sub.push(`홀 정산 ${wonS(Math.round(net[p.id]))} · 후핸디 ${wonS(Math.round(handiNet[p.id]))}`);
     return `<div class="netrow">
       <span class="rank num">${k+1}</span>
       <span class="nm">${esc(p.name)}
-        ${splitHalves?`<small class="halves num">전반 ${wonS(Math.round(half.f[p.id]))} · 후반 ${wonS(Math.round(half.b[p.id]))}</small>`:""}
+        ${sub.map(s=>`<small class="halves num">${s}</small>`).join("")}
       </span>
       <span class="sc num">${strokes[p.id]||0}타 · ${strokes[p.id]-parSum>0?"+":""}${strokes[p.id]-parSum}</span>
       <span class="amt num ${v>0?"pos":v<0?"neg":"zero"}">${v===0?"±₩0":wonS(v)}</span>
     </div>`;
   }).join("");
 
-  const tr = minimalTransfers(net);
+  const tr = minimalTransfers(total);
   const trHtml = tr.length
     ? tr.map(t=>`<div class="pay">
         <span class="from">${esc(nameOf(t.from))}</span>
@@ -796,7 +884,31 @@ function renderResult(){
     mat += `<td class="num"><b>${won(sum)}</b></td></tr>`;
   }
   mat += `</tbody></table></div>
-    <div class="matnote">가로줄이 낸 돈, 세로줄이 받은 돈입니다. 상계 전 실제 발생액이라 홀별 합과 정확히 일치합니다.</div>`;
+    <div class="matnote">가로줄이 낸 돈, 세로줄이 받은 돈입니다. 상계 전 실제 발생액이라 홀별 합${hasHandi?"과 후핸디":""}과 정확히 일치합니다.</div>`;
+
+  // 후핸디
+  const hAmt = S.cfg.handi.amount == null ? S.base : S.cfg.handi.amount;
+  const tot = totalStrokes();
+  const byStroke = pl.slice().filter(p=>tot[p.id].holes>0).sort((a,b)=>tot[a.id].sum-tot[b.id].sum);
+  const unevenHoles = new Set(byStroke.map(p=>tot[p.id].holes)).size > 1;
+  const handiCard = !S.cfg.handi.on
+    ? `<div class="empty">후핸디를 쓰지 않도록 설정되어 있습니다.<br>설정 탭에서 켤 수 있습니다.</div>`
+    : !hasHandi
+      ? `<div class="empty">아직 타수 차이가 없습니다.</div>`
+      : `<div class="tablewrap"><table><thead><tr><th>총타수</th>
+          ${byStroke.map(p=>`<th>${esc(p.name)}</th>`).join("")}<th>후핸디</th></tr></thead><tbody>
+          <tr><td>&nbsp;</td>${byStroke.map(p=>`<td class="num">${tot[p.id].sum}타</td>`).join("")}<td></td></tr>
+        </tbody></table></div>
+        ${handi.map(t=>`<div class="pay">
+            <span class="from">${esc(nameOf(t.from))}</span>
+            <span class="arrow">→</span>
+            <span class="to">${esc(nameOf(t.to))}</span>
+            <span class="sc num" style="color:var(--ink-3); font-size:12px">${t.strokes}타 × ${won(hAmt)}</span>
+            <span class="amt num">${won(t.value)}</span></div>`).join("")}
+        <div class="matnote">
+          라운드 총타수 차이만큼 <b>잘 친 사람이 못 친 사람에게</b> 줍니다. 기준금액은 ${won(hAmt)}입니다.
+          ${unevenHoles?`<br><b style="color:var(--neg)">입력된 홀 수가 사람마다 다릅니다.</b> 총타수 비교가 공정하지 않을 수 있으니 확인해 주세요.`:""}
+        </div>`;
 
   const logs = played.map(i=>{
     const r = perHole[i], h = S.holes[i];
@@ -811,7 +923,7 @@ function renderResult(){
     return `<details class="holelog">
       <summary>
         <span class="hn">${holeLabel(i)}</span>
-        <span class="meta">파${h.par} · ${won(r.amount)}${r.dbl.on?" ":""}</span>
+        <span class="meta">파${h.par} · ${won(r.amount)}${h.par===3&&h.near?` · 니어 ${esc(nameOf(h.near))}`:""}</span>
         ${r.dbl.on?`<span class="badge-dbl">배판 ×${r.dbl.mult}</span>`:""}
         <span class="tot num">${won(tot)}</span>
       </summary>
@@ -824,7 +936,10 @@ function renderResult(){
       <div class="card netgrid">${netHtml}</div></div>
     <div class="sect"><div class="sect-head"><h2>이렇게 주고받으면 끝</h2><span class="hint">최소 송금 ${tr.length}건</span></div>
       <div class="card">${trHtml}</div></div>
-    <div class="sect"><div class="sect-head"><h2>총액 매트릭스</h2></div>
+    <div class="sect"><div class="sect-head"><h2>후핸디</h2>
+      <span class="hint">${hasHandi?`${handi.length}건`:"—"}</span></div>
+      <div class="card">${handiCard}</div></div>
+    <div class="sect"><div class="sect-head"><h2>총액 매트릭스</h2><span class="hint">홀 정산 + 후핸디</span></div>
       <div class="card">${mat}</div></div>
     <div class="sect"><div class="sect-head"><h2>홀별 내역</h2><span class="hint">탭하면 펼쳐짐</span></div>
       <div class="card">${logs}</div></div>
@@ -891,6 +1006,34 @@ function renderSetup(){
           ‘홀 금액 연동’은 그 홀에 실제 적용된 타당금액 기준입니다. ₩1,000판에서 버디가 나오면 그 홀은 배판이라
           타당 ₩2,000이 되고, 버디값도 <b>₩${(S.base*2*(c.birdie.mult||0)).toLocaleString("ko-KR")}</b>씩 받습니다.
           같은 홀에서 두 명이 버디면 서로에게는 주고받지 않고, 버디를 못 친 사람에게서만 받습니다.
+        </div>
+      </div></div>
+
+    <div class="sect"><div class="sect-head"><h2>파3 · 니어리스트</h2></div>
+      <div class="card">
+        ${sw("nearOn","니어값","나머지 전원이 니어에게 홀 적용금액만큼 지급",c.nearOn)}
+        ${sw("spitOn","토해내기","니어를 잡고 3퍼트 이상이면 같은 금액을 도로 반납",c.spitOn)}
+        <div class="matnote">
+          니어값은 그 홀 금액에 연동됩니다. ₩${S.base.toLocaleString("ko-KR")}판이면 일반홀 ₩${S.base.toLocaleString("ko-KR")},
+          배판홀이면 ₩${(S.base*2).toLocaleString("ko-KR")}. 토해내기는 퍼트 수를 입력해야 판정됩니다.
+        </div>
+      </div></div>
+
+    <div class="sect"><div class="sect-head"><h2>후핸디</h2></div>
+      <div class="card">
+        ${sw("handi.on","후핸디 정산","라운드가 끝난 뒤 총타수 차이로 한 번 더 정산",c.handi.on)}
+        <div class="row"><span class="k">기준금액<small>1타 차이당. 비워두면 타당 기본금액(${won(S.base)})을 씁니다.</small></span>
+          <input type="number" id="handiAmt" value="${c.handi.amount == null ? "" : c.handi.amount}"
+                 placeholder="${S.base}" step="500" min="0"></div>
+        <div class="row"><span class="k">지급 방향</span>
+          <div class="seg">
+            <button data-hdir="low" aria-pressed="${c.handi.dir==="low"}">잘 친 사람이</button>
+            <button data-hdir="high" aria-pressed="${c.handi.dir==="high"}">못 친 사람이</button>
+          </div></div>
+        <div class="matnote">
+          A 80타, B 88타면 8타 차이 × ${won(c.handi.amount == null ? S.base : c.handi.amount)} =
+          <b>${won(8 * (c.handi.amount == null ? S.base : c.handi.amount))}</b>을
+          ${c.handi.dir==="low" ? "A가 B에게" : "B가 A에게"} 줍니다.
         </div>
       </div></div>
 
@@ -963,18 +1106,23 @@ function saveRound(){
 
 /* 카톡 붙여넣기용 텍스트 */
 function summaryText(){
-  const { net, perHole } = settleAll();
+  const { net, perHole, handi, handiNet, total } = settleAll();
   const played = Array.from({length:S.holeCount},(_,i)=>i).filter(holeDone);
   const L = [];
   L.push(`⛳ ${S.title||"골프 내기"} (${S.date})`);
   L.push(`타당 ${won(S.base)} · ${played.length}홀 정산`);
   L.push("");
   L.push("[순액]");
-  P().slice().sort((a,b)=>net[b.id]-net[a.id]).forEach(p=>{
+  P().slice().sort((a,b)=>total[b.id]-total[a.id]).forEach(p=>{
     const st = played.reduce((a,i)=>a+(S.holes[i].s[p.id]||0),0);
-    L.push(`${p.name} ${st}타  ${wonS(Math.round(net[p.id]))}`);
+    L.push(`${p.name} ${st}타  ${wonS(Math.round(total[p.id]))}`);
   });
-  const tr = minimalTransfers(net);
+  if(handi.length){
+    L.push("");
+    L.push("[후핸디]");
+    handi.forEach(t=>L.push(`${nameOf(t.from)} → ${nameOf(t.to)}  ${t.strokes}타  ${won(t.value)}`));
+  }
+  const tr = minimalTransfers(total);
   if(tr.length){
     L.push("");
     L.push("[송금]");
@@ -1053,6 +1201,7 @@ document.addEventListener("click", e=>{
     }
     render(); return;
   }
+  if(t.dataset.near != null){ h.near = t.dataset.near || null; render(); return; }
   if(t.dataset.force){
     const d = doubleAt(S.cur);
     h.force = (t.dataset.force === "on") ? true : (d.auto ? false : null);
@@ -1086,7 +1235,14 @@ document.addEventListener("click", e=>{
   }
   if(t.dataset.mult){ S.cfg.mult = +t.dataset.mult; render(); return; }
   if(t.dataset.when){ S.cfg.when = t.dataset.when; render(); return; }
-  if(t.dataset.cfg){ S.cfg[t.dataset.cfg] = !S.cfg[t.dataset.cfg]; render(); return; }
+  if(t.dataset.cfg){
+    const path = t.dataset.cfg.split(".");
+    const obj = path.length > 1 ? S.cfg[path[0]] : S.cfg;
+    const key = path[path.length-1];
+    obj[key] = !obj[key];
+    render(); return;
+  }
+  if(t.dataset.hdir){ S.cfg.handi.dir = t.dataset.hdir; render(); return; }
   if(t.dataset.libload){
     const rec = getLib().find(r=>r.id===t.dataset.libload);
     if(rec){ S = rec.data; S.cfg = Object.assign(freshState().cfg, S.cfg||{}); TAB="score"; render(); toast("불러왔습니다"); }
@@ -1115,6 +1271,10 @@ document.addEventListener("input", e=>{
   if(el.id === "date"){ S.date = el.value; save(); return; }
   if(el.id === "base"){ S.base = Math.max(0, +el.value||0); save(); return; }
   if(el.dataset.pen){ S.pen[el.dataset.pen] = Math.max(0, +el.value||0); save(); return; }
+  if(el.id === "handiAmt"){
+    S.cfg.handi.amount = el.value.trim() === "" ? null : Math.max(0, +el.value||0);
+    save(); return;
+  }
   if(el.dataset.bmult){ S.cfg[el.dataset.bmult].mult = Math.max(0, +el.value||0); save(); return; }
   if(el.dataset.bfixed){ S.cfg[el.dataset.bfixed].fixed = Math.max(0, +el.value||0); save(); return; }
 });
