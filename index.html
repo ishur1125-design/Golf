@@ -88,6 +88,17 @@ h1,h2,h3{margin:0; font-weight:650; text-wrap:balance; letter-spacing:-.01em}
 .sect-head h2{font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
 .sect-head .hint{font-size:12px; color:var(--ink-3); margin-left:auto}
 
+/* ── 팀전 바 ─────────────────────────────── */
+.teambar{
+  width:100%; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:10px 12px; margin-bottom:10px; border-radius:12px;
+  background:var(--surface); border:1px solid var(--line-strong); box-shadow:var(--shadow); text-align:left;
+}
+.teambar .tl{flex:1; min-width:0; font-size:12px; font-weight:650; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.teambar .tl.right{text-align:right}
+.teambar .tv{font-size:15px; font-weight:750; letter-spacing:-.02em; white-space:nowrap; padding:0 4px}
+.teambar .th{flex:0 0 100%; font-size:11px; font-weight:600; text-align:center; padding-top:2px; border-top:1px dashed var(--line)}
+
 /* ── 현재 판세 ───────────────────────────── */
 .stand{display:flex; gap:6px; overflow-x:auto; padding:2px 2px 4px; scrollbar-width:none; margin-bottom:10px}
 .stand::-webkit-scrollbar{display:none}
@@ -243,6 +254,24 @@ td.z{color:var(--ink-3)}
 .holelog .body .ln .a{margin-left:auto; font-weight:650; color:var(--ink)}
 .badge-dbl{font-size:10px; font-weight:700; padding:1px 5px; border-radius:5px; background:var(--gold-soft); color:var(--gold); border:1px solid var(--gold-line)}
 
+/* ── 팀전 ────────────────────────────────── */
+.board{display:flex; align-items:center; gap:10px}
+.bteam{flex:1; display:flex; flex-direction:column; gap:3px; min-width:0}
+.bteam.right{align-items:flex-end; text-align:right}
+.bteam .bl{font-size:11px; font-weight:700; letter-spacing:.08em; color:var(--ink-3)}
+.bteam .bn{font-size:14px; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%}
+.bteam.win .bl{color:var(--accent)}
+.bmid{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0 6px}
+.bmid .bres{font-size:26px; font-weight:750; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums}
+.bmid .bsub{font-size:10.5px; color:var(--ink-3); font-weight:600; white-space:nowrap}
+.holelog .body .lab2{
+  flex:0 0 auto; width:30px; font-size:10.5px; font-weight:700; color:var(--ink-3);
+}
+.holelog .body em{font-style:normal; color:var(--ink-3); font-size:11px; padding:0 3px}
+.holelog .body .hcmark{font-style:normal; font-size:10px; color:var(--accent); margin-left:2px}
+.teamrow{display:flex; align-items:center; gap:8px; padding:9px 14px; border-top:1px solid var(--line)}
+.teamrow .tn{margin-right:auto; font-weight:650; font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
 /* ── settings ────────────────────────────── */
 .row{display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid var(--line)}
 .row:first-child{border-top:none}
@@ -310,11 +339,13 @@ input[type="number"]{width:106px; text-align:right}
 <div class="wrap">
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="score" aria-selected="true">스코어</button>
+    <button role="tab" data-tab="team" aria-selected="false">팀전</button>
     <button role="tab" data-tab="result" aria-selected="false">정산</button>
     <button role="tab" data-tab="setup" aria-selected="false">설정</button>
   </div>
 
   <div id="tab-score"></div>
+  <div id="tab-team" class="hidden"></div>
   <div id="tab-result" class="hidden"></div>
   <div id="tab-setup" class="hidden"></div>
 </div>
@@ -366,6 +397,12 @@ function freshState(){
       spitOn: true,       // 니어가 3퍼트면 토해내기
       handi: { on:true, amount:null, dir:"low" }     // 후핸디 (low = 잘 친 사람이 지급)
     },
+    team: {
+      on: false,
+      t1: [], t2: [],
+      hc: { t1:{ pid:null, mode:"p45" }, t2:{ pid:null, mode:"p45" } },
+      birdieBase: "adj"   // adj = 핸디 적용 후 / raw = 실제 타수
+    },
     holes: Array.from({length:18}, (_,i)=>newHole(i)),
     cur: 0
   };
@@ -385,6 +422,9 @@ function load(){
     const hd   = Object.assign(base.cfg.handi,  (o.cfg||{}).handi ||{});
     o.cfg = Object.assign(base.cfg, o.cfg||{}, { birdie: bird, eagle: eag, handi: hd });
     (o.holes||[]).forEach(h => { if(h.near === undefined) h.near = null; });
+    const bt = freshState().team;
+    o.team = Object.assign(bt, o.team||{});
+    o.team.hc = Object.assign(bt.hc, (o.team||{}).hc||{});
     o.pen = Object.assign(base.pen, o.pen||{});
     return o;
   }catch(e){ return null; }
@@ -520,6 +560,81 @@ function settleHole(i){
   return { pays, amount: amt, dbl: d };
 }
 
+/* ── 팀전 (2:2 업/다운) — 돈 내기와 완전히 별개 ──────── */
+const TEAM_LABEL = { t1:"A팀", t2:"B팀" };
+
+function teamReady(){
+  const t = S.team;
+  if(!t.on || P().length !== 4) return false;
+  const ids = new Set(P().map(p=>p.id));
+  return t.t1.length === 2 && t.t2.length === 2
+      && [...t.t1, ...t.t2].every(id => ids.has(id))
+      && new Set([...t.t1, ...t.t2]).size === 4;
+}
+function teamOf(pid){
+  return S.team.t1.includes(pid) ? "t1" : S.team.t2.includes(pid) ? "t2" : null;
+}
+/* 이 홀에서 이 사람이 핸디 1타를 받는가 */
+function hcApplies(pid, i){
+  const side = teamOf(pid); if(!side) return false;
+  const hc = S.team.hc[side];
+  if(!hc || hc.pid !== pid) return false;
+  const par = S.holes[i].par;
+  if(par === 3) return hc.mode === "p345";
+  if(par === 4) return hc.mode === "p345" || hc.mode === "p45";
+  return true;  // 파5는 세 방식 모두 적용
+}
+function adjScore(pid, i){
+  const raw = S.holes[i].s[pid];
+  if(raw == null) return null;
+  return Math.max(1, raw - (hcApplies(pid, i) ? 1 : 0));
+}
+
+/* 한 홀의 업/다운 — 양수면 A팀이 그만큼 업 */
+function holeUpDown(i){
+  if(!teamReady()) return null;
+  const h = S.holes[i];
+  const side = key => S.team[key]
+      .map(id => ({ id, adj: adjScore(id, i), raw: h.s[id] }))
+      .filter(x => x.raw != null)
+      .sort((a,b) => a.adj - b.adj);
+  const A = side("t1"), B = side("t2");
+  if(A.length < 2 || B.length < 2) return null;
+
+  const lines = [];
+  let pts = 0;
+  [["잘친", 0], ["못친", 1]].forEach(([lab, k])=>{
+    const a = A[k], b = B[k];
+    if(a.adj === b.adj){ lines.push({ lab, win:null, pts:0, a, b }); return; }
+    const aWin = a.adj < b.adj;
+    const w = aWin ? a : b;
+    const base = S.team.birdieBase === "adj" ? w.adj : w.raw;
+    const bonus = base < h.par ? 1 : 0;
+    const got = 1 + bonus;
+    pts += aWin ? got : -got;
+    lines.push({ lab, win: aWin ? "t1" : "t2", pts:got, bonus, a, b, who:w.id });
+  });
+  return { pts, lines };
+}
+
+function teamTally(){
+  const out = { front:0, back:0, all:0, holes:[] };
+  if(!teamReady()) return out;
+  for(let i=0;i<S.holeCount;i++){
+    const r = holeUpDown(i);
+    out.holes.push(r);
+    if(!r) continue;
+    out.all += r.pts;
+    if(i < 9) out.front += r.pts; else out.back += r.pts;
+  }
+  return out;
+}
+function upDownText(pts){
+  if(pts === 0) return "올스퀘어";
+  return `${pts > 0 ? TEAM_LABEL.t1 : TEAM_LABEL.t2} ${Math.abs(pts)}업`;
+}
+const teamNames = key => S.team[key].map(id=>nameOf(id)).join(" · ");
+
 /* 후핸디 — 라운드 총타수 차이만큼, 잘 친 사람이 못 친 사람에게 */
 function totalStrokes(){
   const t = {};
@@ -622,13 +737,14 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":
 function render(){
   $("#brandSub").textContent =
     P().map(p=>p.name).join(" · ") + " · 타당 " + won(S.base);
-  ["score","result","setup"].forEach(t=>{
+  ["score","team","result","setup"].forEach(t=>{
     $("#tab-"+t).classList.toggle("hidden", t !== TAB);
   });
   document.querySelectorAll('[role="tab"]').forEach(b=>{
     b.setAttribute("aria-selected", String(b.dataset.tab === TAB));
   });
   if(TAB === "score") renderScore();
+  if(TAB === "team") renderTeam();
   if(TAB === "result") renderResult();
   if(TAB === "setup") renderSetup();
   save();
@@ -664,6 +780,17 @@ function renderScore(){
   const run = settleAll().net;
   const playedN = Array.from({length:S.holeCount},(_,k)=>k).filter(holeDone).length;
   const lead = Math.max(...P().map(p=>Math.round(run[p.id])));
+  const T = teamReady() ? teamTally() : null;
+  const teamBar = !T ? "" : (()=>{
+    const hr = holeUpDown(i);
+    return `<button class="teambar" data-tab="team">
+      <span class="tl">${esc(teamNames("t1"))}</span>
+      <span class="tv ${T.all>0?"pos":T.all<0?"neg":"zero"}">${T.all===0?"A/S":upDownText(T.all)}</span>
+      <span class="tl right">${esc(teamNames("t2"))}</span>
+      ${hr ? `<span class="th ${hr.pts>0?"pos":hr.pts<0?"neg":"zero"}">이 홀 ${hr.pts===0?"비김":upDownText(hr.pts)}</span>` : ""}
+    </button>`;
+  })();
+
   const stand = P().length < 2 || playedN === 0 ? "" : `
     <div class="standhead"><h2>현재까지</h2><span>${playedN}개 홀 입력됨</span></div>
     <div class="stand">${P().map(p=>{
@@ -715,6 +842,7 @@ function renderScore(){
          <button data-force="on">배판으로</button></div>`;
 
   $("#tab-score").innerHTML = `
+    ${teamBar}
     ${stand}
     ${strip}
     <div class="card sect" style="gap:0; margin-bottom:14px">
@@ -819,6 +947,85 @@ function pill(pid,key,label,n){
     <button class="lbl" data-c="${pid}|${key}|1">${label}${n>0?` <b>${n}</b>`:""}</button>
     ${n>0?`<button class="minus" data-c="${pid}|${key}|-1" aria-label="${label} 감소">−</button>`:""}
   </span>`;
+}
+
+/* ── 팀전 탭 ─────────────────────────────── */
+function renderTeam(){
+  if(!teamReady()){
+    $("#tab-team").innerHTML = `<div class="card"><div class="empty">
+      팀전은 <b>4명</b>일 때 쓸 수 있습니다.${P().length!==4?`<br>지금은 ${P().length}명입니다.`:""}
+      <br><br>설정 탭 → <b>팀전</b>에서 켜고 편을 나눠 주세요.</div></div>`;
+    return;
+  }
+  const T = teamTally();
+  const played = T.holes.map((r,i)=>r?i:-1).filter(i=>i>=0);
+  const frontDone = played.some(i=>i<9), backDone = played.some(i=>i>=9);
+
+  const board = `<div class="board">
+    <div class="bteam ${T.all>0?"win":""}">
+      <span class="bl">${TEAM_LABEL.t1}</span>
+      <span class="bn">${esc(teamNames("t1"))}</span>
+    </div>
+    <div class="bmid">
+      <span class="bres ${T.all>0?"pos":T.all<0?"neg":"zero"}">${T.all===0?"A/S":Math.abs(T.all)+"업"}</span>
+      <span class="bsub">${T.all===0?"올스퀘어":TEAM_LABEL[T.all>0?"t1":"t2"]+" 리드"}</span>
+    </div>
+    <div class="bteam right ${T.all<0?"win":""}">
+      <span class="bl">${TEAM_LABEL.t2}</span>
+      <span class="bn">${esc(teamNames("t2"))}</span>
+    </div>
+  </div>`;
+
+  const halves = S.holeCount === 18 ? `
+    <div class="card netgrid">
+      <div class="netrow"><span class="nm">전반 (1~9번)</span>
+        <span class="amt ${T.front>0?"pos":T.front<0?"neg":"zero"}">${frontDone?upDownText(T.front):"—"}</span></div>
+      <div class="netrow"><span class="nm">후반 (1~9번)</span>
+        <span class="amt ${T.back>0?"pos":T.back<0?"neg":"zero"}">${backDone?upDownText(T.back):"—"}</span></div>
+      <div class="netrow"><span class="nm"><b>전체 합계</b></span>
+        <span class="amt ${T.all>0?"pos":T.all<0?"neg":"zero"}"><b>${played.length?upDownText(T.all):"—"}</b></span></div>
+    </div>` : "";
+
+  const logs = played.length ? played.map(i=>{
+    const r = T.holes[i], h = S.holes[i];
+    const rows = r.lines.map(l=>{
+      const nm = x => `${esc(nameOf(x.id))} <b class="num">${x.adj}</b>${x.adj!==x.raw?`<i class="hcmark">(${x.raw}−1)</i>`:""}`;
+      const res = l.win === null ? "비김"
+        : `${TEAM_LABEL[l.win]} ${l.pts}업${l.bonus?" (언더파 +1)":""}`;
+      return `<div class="ln">
+        <span class="lab2">${l.lab}</span>
+        <span>${nm(l.a)} <em>vs</em> ${nm(l.b)}</span>
+        <span class="a ${l.win==="t1"?"pos":l.win==="t2"?"neg":"zero"}">${res}</span></div>`;
+    }).join("");
+    return `<details class="holelog">
+      <summary>
+        <span class="hn">${holeLabel(i)}</span>
+        <span class="meta">파${h.par}</span>
+        <span class="tot ${r.pts>0?"pos":r.pts<0?"neg":"zero"}">${r.pts===0?"비김":upDownText(r.pts)}</span>
+      </summary>
+      <div class="body">${rows}</div>
+    </details>`;
+  }).join("") : `<div class="empty">네 명 모두 입력된 홀이 아직 없습니다.</div>`;
+
+  const hcNote = ["t1","t2"].map(k=>{
+    const hc = S.team.hc[k];
+    if(!hc.pid) return `${TEAM_LABEL[k]} 핸디 없음`;
+    const m = hc.mode === "p345" ? "전 홀" : hc.mode === "p45" ? "파4·파5" : "파5만";
+    return `${TEAM_LABEL[k]} ${esc(nameOf(hc.pid))} −1타 (${m})`;
+  }).join(" · ");
+
+  $("#tab-team").innerHTML = `
+    <div class="sect"><div class="sect-head"><h2>업 / 다운</h2>
+      <span class="hint">${played.length}개 홀 진행</span></div>
+      <div class="card" style="padding:16px 14px">${board}</div></div>
+    ${halves?`<div class="sect"><div class="sect-head"><h2>구간별</h2></div>${halves}</div>`:""}
+    <div class="sect"><div class="sect-head"><h2>홀별 승부</h2><span class="hint">탭하면 펼쳐짐</span></div>
+      <div class="card">${logs}</div></div>
+    <div class="matnote" style="padding:0 4px">
+      ${hcNote}<br>
+      잘 친 사람끼리, 못 친 사람끼리 각각 겨뤄 이기면 1업. 이긴 스코어가 파보다 낮으면 1업이 더 붙어
+      한 홀 최대 4업까지 납니다. <b>돈 내기와는 완전히 별개로 계산됩니다.</b>
+    </div>`;
 }
 
 /* ── 정산 탭 ─────────────────────────────── */
@@ -972,6 +1179,8 @@ function renderSetup(){
       <div class="card plist">${players}
         <button class="addbtn" id="addP" ${P().length>=5?"disabled":""}>+ 플레이어 추가</button></div></div>
 
+    ${teamSetup()}
+
     <div class="sect"><div class="sect-head"><h2>라운드</h2></div>
       <div class="card">
         <div class="row"><span class="k">라운드 이름</span>
@@ -1064,6 +1273,59 @@ function renderSetup(){
       <button class="btn danger" id="resetBtn">스코어 전체 지우기</button>
     </div>`;
 }
+/* 설정 탭 · 팀 나누기 */
+function teamSetup(){
+  const t = S.team;
+  const four = P().length === 4;
+  const assign = P().map(p=>{
+    const side = teamOf(p.id);
+    return `<div class="teamrow">
+      <span class="tn">${esc(p.name)}</span>
+      <div class="seg">
+        <button data-team="t1|${p.id}" aria-pressed="${side==="t1"}">A팀</button>
+        <button data-team="t2|${p.id}" aria-pressed="${side==="t2"}">B팀</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  const hcBlock = k => {
+    const hc = t.hc[k];
+    const mem = t[k];
+    if(mem.length !== 2) return "";
+    return `<div class="row"><span class="k">${TEAM_LABEL[k]} 핸디<small>한 명만, 해당 홀에서 1타를 빼고 계산합니다</small></span>
+        <div class="seg">
+          <button data-hcp="${k}|" aria-pressed="${!hc.pid}">없음</button>
+          ${mem.map(id=>`<button data-hcp="${k}|${id}" aria-pressed="${hc.pid===id}">${esc(nameOf(id))}</button>`).join("")}
+        </div></div>
+      ${hc.pid ? `<div class="row"><span class="k" style="padding-left:10px; color:var(--ink-2)">└ 적용 홀</span>
+        <div class="seg">
+          <button data-hcm="${k}|p345" aria-pressed="${hc.mode==="p345"}">전 홀</button>
+          <button data-hcm="${k}|p45" aria-pressed="${hc.mode==="p45"}">파4·5</button>
+          <button data-hcm="${k}|p5" aria-pressed="${hc.mode==="p5"}">파5만</button>
+        </div></div>` : ""}`;
+  };
+
+  const bad = t.on && four && !teamReady();
+
+  return `<div class="sect"><div class="sect-head"><h2>팀전 (2:2 업/다운)</h2>
+      <span class="hint">${four?"":"4명 필요"}</span></div>
+    <div class="card">
+      ${sw("team.on","팀전 사용","돈 내기와 별개로 2:2 업/다운을 따로 계산합니다",t.on)}
+      ${t.on && four ? assign : ""}
+      ${bad ? `<div class="matnote" style="color:var(--neg)"><b>각 팀에 두 명씩 배정해 주세요.</b>
+        지금 A팀 ${t.t1.length}명 · B팀 ${t.t2.length}명입니다.</div>` : ""}
+      ${t.on && teamReady() ? hcBlock("t1") + hcBlock("t2") : ""}
+      ${t.on && teamReady() ? `<div class="row"><span class="k">언더파 보너스 기준<small>파보다 낮은 스코어로 이기면 1업이 더 붙습니다</small></span>
+        <div class="seg">
+          <button data-tbb="adj" aria-pressed="${t.birdieBase==="adj"}">핸디 적용 후</button>
+          <button data-tbb="raw" aria-pressed="${t.birdieBase==="raw"}">실제 타수</button>
+        </div></div>` : ""}
+      ${t.on && four ? `<div class="matnote">
+        핸디 ‘전 홀’은 파3까지 포함합니다. 파3에는 핸디를 주지 않는 것이 보통이라 <b>파4·5</b>가 기본입니다.
+      </div>` : ""}
+    </div></div>`;
+}
+
 function bonusRow(key,label,c){
   const link = c.mode === "link";
   const sub = link
@@ -1224,7 +1486,14 @@ document.addEventListener("click", e=>{
     if(P().length <= 1) return;
     const id = t.dataset.pdel;
     S.players = P().filter(p=>p.id!==id);
-    S.holes.forEach(hh=>["s","putt","ob","hz","pen"].forEach(k=>delete hh[k][id]));
+    S.holes.forEach(hh=>{
+      ["s","putt","ob","hz","pen"].forEach(k=>delete hh[k][id]);
+      if(hh.near === id) hh.near = null;
+    });
+    ["t1","t2"].forEach(k=>{
+      S.team[k] = S.team[k].filter(x=>x!==id);
+      if(S.team.hc[k].pid === id) S.team.hc[k].pid = null;
+    });
     render(); return;
   }
   if(t.dataset.hc){ S.holeCount = +t.dataset.hc; S.cur = Math.min(S.cur, S.holeCount-1); render(); return; }
@@ -1237,12 +1506,43 @@ document.addEventListener("click", e=>{
   if(t.dataset.when){ S.cfg.when = t.dataset.when; render(); return; }
   if(t.dataset.cfg){
     const path = t.dataset.cfg.split(".");
-    const obj = path.length > 1 ? S.cfg[path[0]] : S.cfg;
+    const root = path[0] === "team" ? S : S.cfg;
+    const obj = path.length > 1 ? root[path[0]] : root;
     const key = path[path.length-1];
     obj[key] = !obj[key];
+    // 팀전을 처음 켜면 앞의 두 명 / 뒤의 두 명으로 자동 배정
+    if(t.dataset.cfg === "team.on" && S.team.on && P().length === 4
+       && S.team.t1.length === 0 && S.team.t2.length === 0){
+      S.team.t1 = [P()[0].id, P()[1].id];
+      S.team.t2 = [P()[2].id, P()[3].id];
+    }
     render(); return;
   }
   if(t.dataset.hdir){ S.cfg.handi.dir = t.dataset.hdir; render(); return; }
+
+  /* 팀전 */
+  if(t.dataset.team){
+    const [side, pid] = t.dataset.team.split("|");
+    const other = side === "t1" ? "t2" : "t1";
+    S.team[other] = S.team[other].filter(x => x !== pid);
+    S.team[side] = S.team[side].includes(pid)
+      ? S.team[side].filter(x => x !== pid)      // 다시 누르면 배정 해제
+      : [...S.team[side], pid];
+    ["t1","t2"].forEach(k=>{
+      if(!S.team[k].includes(S.team.hc[k].pid)) S.team.hc[k].pid = null;
+    });
+    render(); return;
+  }
+  if(t.dataset.hcp){
+    const [k, pid] = t.dataset.hcp.split("|");
+    S.team.hc[k].pid = pid || null;
+    render(); return;
+  }
+  if(t.dataset.hcm){
+    const [k, m] = t.dataset.hcm.split("|");
+    S.team.hc[k].mode = m; render(); return;
+  }
+  if(t.dataset.tbb){ S.team.birdieBase = t.dataset.tbb; render(); return; }
   if(t.dataset.libload){
     const rec = getLib().find(r=>r.id===t.dataset.libload);
     if(rec){ S = rec.data; S.cfg = Object.assign(freshState().cfg, S.cfg||{}); TAB="score"; render(); toast("불러왔습니다"); }
